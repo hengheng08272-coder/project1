@@ -1,6 +1,6 @@
 {
   "name": "tg-downloader-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Telegram userbot service for TG Downloader: scan, download to R2, forward between groups.",
