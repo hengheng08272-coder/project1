@@ -7,7 +7,7 @@
  */
 import { config } from "./config.js";
 
-async function call(method, body) {
+export async function call(method, body) {
   if (!config.telegramLoginBotToken) return null;
   const res = await fetch(`https://api.telegram.org/bot${config.telegramLoginBotToken}/${method}`, {
     method: "POST",
