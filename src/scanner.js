@@ -32,7 +32,7 @@ export function parseEpNumber(...sources) {
  * (a "song" -- music, a voice note, anything Telegram tags as audio), else
  * null. Everything else (photos, plain documents, stickers) is skipped.
  */
-function mediaInfo(message) {
+export function mediaInfo(message) {
   const document = message.media?.document;
   if (!document) return null;
 
