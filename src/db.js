@@ -52,6 +52,7 @@ export async function telegramSettings() {
     apiHash: config.telegramApiHash || row.api_hash || "",
     phone: config.telegramPhone || row.phone || "",
     sessionString: config.telegramSession || row.session_string || "",
+    storageChatId: row.storage_chat_id || "",
   };
 }
 

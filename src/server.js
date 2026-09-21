@@ -22,6 +22,7 @@ import * as urlfetch from "./urlfetch.js";
 import { scanGroup } from "./scanner.js";
 import * as subscription from "./subscription.js";
 import * as telegram from "./telegram.js";
+import * as telegramStorage from "./telegramStorage.js";
 import { signInWithTelegram } from "./telegramLogin.js";
 import { answerCallbackQuery, stampDecision } from "./notifyBot.js";
 import { loop } from "./worker.js";
@@ -418,6 +419,33 @@ app.get(
     if (!key) return res.status(400).json({ success: false, error: "A key is required." });
     const filename = String(req.query.filename ?? key.split("/").pop() ?? "download").replace(/"/g, "");
     const { stream, contentType, contentLength } = await r2.getObjectStream(key);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", contentType);
+    if (contentLength) res.setHeader("Content-Length", String(contentLength));
+    stream.pipe(res);
+  })
+);
+
+/**
+ * Streams a file back for an episode archived to a Telegram storage channel
+ * instead of R2 -- the userbot fetches it fresh from Telegram on every call
+ * (there is no static URL for a Telegram-stored file), through a temp file
+ * that is deleted the moment the response finishes.
+ */
+app.get(
+  "/api/telegram-storage/download",
+  requireApiKey,
+  route(async (req, res) => {
+    const chatId = String(req.query.chat_id ?? "").trim();
+    const messageId = Number(req.query.message_id);
+    if (!chatId || !Number.isFinite(messageId)) {
+      return res.status(400).json({ success: false, error: "chat_id and message_id are required." });
+    }
+    const { stream, contentType, contentLength, fileName } = await telegramStorage.downloadStoredMessage(
+      chatId,
+      messageId
+    );
+    const filename = String(req.query.filename ?? fileName).replace(/"/g, "");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", contentType);
     if (contentLength) res.setHeader("Content-Length", String(contentLength));
