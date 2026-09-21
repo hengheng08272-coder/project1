@@ -23,7 +23,7 @@ import { scanGroup } from "./scanner.js";
 import * as subscription from "./subscription.js";
 import * as telegram from "./telegram.js";
 import * as telegramStorage from "./telegramStorage.js";
-import { signInWithTelegram } from "./telegramLogin.js";
+import { signInWithTelegram, signInWithTelegramMiniApp } from "./telegramLogin.js";
 import { answerCallbackQuery, stampDecision } from "./notifyBot.js";
 import { loop } from "./worker.js";
 
@@ -118,6 +118,18 @@ app.post(
   "/api/auth/telegram-login",
   route(async (req, res) => {
     res.json({ success: true, ...(await signInWithTelegram(req.body ?? {})) });
+  })
+);
+
+// Same reasoning as above: open on purpose, since signInWithTelegramMiniApp()
+// rejects anything not signed by Telegram itself for our bot. This is what
+// the app calls when it's opened as a Telegram Mini App (inside a WebView),
+// instead of the Login Widget button on the plain web page.
+app.post(
+  "/api/auth/telegram-miniapp",
+  route(async (req, res) => {
+    const initData = String(req.body?.init_data ?? "");
+    res.json({ success: true, ...(await signInWithTelegramMiniApp(initData)) });
   })
 );
 

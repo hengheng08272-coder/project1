@@ -50,14 +50,12 @@ function verifyPayload(payload) {
 const emailFor = (telegramId) => `telegram-${telegramId}@users.kh-telegram-download.local`;
 
 /**
- * Verifies a Telegram Login Widget payload and returns a one-time token the
- * frontend exchanges for a session via supabase.auth.verifyOtp({token_hash,
- * type: 'magiclink'}) -- creating the Supabase account on first login.
+ * Gets or creates the Supabase account linked to a Telegram id, and issues a
+ * one-time token for it -- the part shared by every way of proving "this is
+ * really that Telegram account" (the Login Widget below, and the Mini App
+ * variant), once each has done its own signature check.
  */
-export async function signInWithTelegram(payload) {
-  verifyPayload(payload);
-  const telegramId = String(payload.id);
-
+async function resolveTelegramIdentity({ telegramId, username, firstName, lastName, photoUrl }) {
   const identity = rows(
     await db().from("telegram_identities").select("user_id").eq("telegram_id", telegramId).limit(1)
   )[0];
@@ -74,10 +72,10 @@ export async function signInWithTelegram(payload) {
       email_confirm: true,
       user_metadata: {
         telegram_id: telegramId,
-        telegram_username: payload.username || null,
-        telegram_first_name: payload.first_name || null,
-        telegram_last_name: payload.last_name || null,
-        telegram_photo_url: payload.photo_url || null,
+        telegram_username: username || null,
+        telegram_first_name: firstName || null,
+        telegram_last_name: lastName || null,
+        telegram_photo_url: photoUrl || null,
       },
     });
     if (error) throw new Error(error.message);
@@ -87,10 +85,10 @@ export async function signInWithTelegram(payload) {
         .insert({
           telegram_id: telegramId,
           user_id: created.user.id,
-          username: payload.username || null,
-          first_name: payload.first_name || null,
-          last_name: payload.last_name || null,
-          photo_url: payload.photo_url || null,
+          username: username || null,
+          first_name: firstName || null,
+          last_name: lastName || null,
+          photo_url: photoUrl || null,
           created_at: nowIso(),
         })
         .select("telegram_id")
@@ -104,4 +102,75 @@ export async function signInWithTelegram(payload) {
   if (!tokenHash) throw new Error("Could not issue a sign-in token.");
 
   return { email, token_hash: tokenHash };
+}
+
+/**
+ * Verifies a Telegram Login Widget payload and returns a one-time token the
+ * frontend exchanges for a session via supabase.auth.verifyOtp({token_hash,
+ * type: 'magiclink'}) -- creating the Supabase account on first login.
+ */
+export async function signInWithTelegram(payload) {
+  verifyPayload(payload);
+  return resolveTelegramIdentity({
+    telegramId: String(payload.id),
+    username: payload.username,
+    firstName: payload.first_name,
+    lastName: payload.last_name,
+    photoUrl: payload.photo_url,
+  });
+}
+
+/**
+ * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ * Mini App initData is signed differently from the Login Widget: the HMAC key
+ * is itself HMAC_SHA256("WebAppData", bot_token), not sha256(bot_token).
+ */
+function verifyMiniAppInitData(initDataRaw) {
+  if (!initDataRaw || typeof initDataRaw !== "string") {
+    throw new Error("No Telegram Mini App init data was provided.");
+  }
+  if (!config.telegramLoginBotToken) {
+    throw new Error("TELEGRAM_LOGIN_BOT_TOKEN is not configured on the server.");
+  }
+
+  const params = new URLSearchParams(initDataRaw);
+  const hash = params.get("hash");
+  if (!hash) throw new Error("That does not look like Telegram Mini App init data.");
+  params.delete("hash");
+
+  const dataCheckString = Array.from(params.keys())
+    .sort()
+    .map((key) => `${key}=${params.get(key)}`)
+    .join("\n");
+
+  const secretKey = crypto.createHmac("sha256", "WebAppData").update(config.telegramLoginBotToken).digest();
+  const computedHash = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+
+  const a = Buffer.from(computedHash, "hex");
+  const b = Buffer.from(String(hash), "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new Error("Telegram Mini App signature did not match.");
+  }
+
+  const authDate = Number(params.get("auth_date") || 0);
+  const ageSeconds = Date.now() / 1000 - authDate;
+  if (!Number.isFinite(ageSeconds) || ageSeconds > 86400 || ageSeconds < -60) {
+    throw new Error("This Telegram session has expired -- please reopen the app.");
+  }
+
+  const user = JSON.parse(params.get("user") || "{}");
+  if (!user?.id) throw new Error("Telegram Mini App init data has no user.");
+  return user;
+}
+
+/** The Mini App equivalent of signInWithTelegram, for the app opened as a Telegram Web App. */
+export async function signInWithTelegramMiniApp(initDataRaw) {
+  const user = verifyMiniAppInitData(initDataRaw);
+  return resolveTelegramIdentity({
+    telegramId: String(user.id),
+    username: user.username,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    photoUrl: user.photo_url,
+  });
 }
