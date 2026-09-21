@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { db, downloadSettings, nowIso, rows } from "./db.js";
 import * as r2 from "./r2.js";
+import { storeMessage } from "./telegramStorage.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { getClient, normalizeChatId } from "./telegram.js";
 
@@ -86,6 +87,33 @@ export async function runDownload(downloadId) {
       .update({ status: "downloading", started_at: nowIso(), error: null })
       .eq("id", downloadId);
     await db().from("episodes").update({ status: "downloading" }).eq("id", episode.id);
+
+    // A group set to the "telegram" storage backend never touches R2 or this
+    // process's disk at all: the source message is forwarded server-side into
+    // the configured storage chat, exactly like the existing group-mirror
+    // forward path, and that's the whole download.
+    if (group.storage_backend === "telegram") {
+      const stored = await storeMessage(group.chat_id, episode.message_id);
+      await db()
+        .from("downloads")
+        .update({
+          status: "completed",
+          progress: 100,
+          completed_at: nowIso(),
+          downloaded_bytes: episode.file_size || 0,
+        })
+        .eq("id", downloadId);
+      await db()
+        .from("episodes")
+        .update({
+          status: "completed",
+          tg_storage_chat_id: stored.chatId,
+          tg_storage_message_id: stored.messageId,
+        })
+        .eq("id", episode.id);
+      await refreshCounters(group.id, episode.topic_id);
+      return;
+    }
 
     const client = await getClient();
     const entity = await client.getEntity(normalizeChatId(group.chat_id));
