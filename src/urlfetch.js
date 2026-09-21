@@ -9,9 +9,12 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { Readable } from "node:stream";
 
+import fs from "node:fs/promises";
+
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { recordManualUpload } from "./library.js";
+import { downloadM3u8, isM3u8Url } from "./m3u8fetch.js";
 import * as r2 from "./r2.js";
 
 const running = new Set();
@@ -89,20 +92,43 @@ export async function saveItem(itemId) {
 
     await patch(itemId, { status: "downloading", error: null });
 
-    const response = await fetchFollowingRedirects(item.url);
-    if (!response.ok || !response.body) {
-      throw new Error(`The server answered ${response.status} ${response.statusText}.`);
-    }
+    let fileName;
+    let key;
+    let publicUrl;
+    let size;
 
-    const fileName = fileNameFor(item, response);
-    const key = buildListItemKey(showTitle, item, fileName);
-    const url = await r2.uploadBody(
-      Readable.fromWeb(response.body),
-      key,
-      response.headers.get("content-type") || "video/mp4"
-    );
-    const size = Number.parseInt(response.headers.get("content-length") ?? "", 10);
-    const publicUrl = url === key ? null : url;
+    if (isM3u8Url(item.url)) {
+      // yt-dlp stitches the fragments locally first -- there is no single
+      // response stream to pipe straight into R2 the way a plain file has.
+      const hint = item.label ? `${item.label}.mp4` : "video.mp4";
+      const localPath = await downloadM3u8(item.url, item.referer || "", hint);
+      try {
+        fileName = hint;
+        key = buildListItemKey(showTitle, item, fileName);
+        const stat = await fs.stat(localPath);
+        const uploadedUrl = await r2.upload(localPath, key, "video/mp4");
+        publicUrl = uploadedUrl === key ? null : uploadedUrl;
+        size = stat.size;
+      } finally {
+        await fs.rm(localPath, { force: true }).catch(() => {});
+      }
+    } else {
+      const response = await fetchFollowingRedirects(item.url);
+      if (!response.ok || !response.body) {
+        throw new Error(`The server answered ${response.status} ${response.statusText}.`);
+      }
+
+      fileName = fileNameFor(item, response);
+      key = buildListItemKey(showTitle, item, fileName);
+      const uploadedUrl = await r2.uploadBody(
+        Readable.fromWeb(response.body),
+        key,
+        response.headers.get("content-type") || "video/mp4"
+      );
+      const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+      publicUrl = uploadedUrl === key ? null : uploadedUrl;
+      size = Number.isFinite(contentLength) ? contentLength : null;
+    }
 
     await patch(itemId, {
       status: "completed",

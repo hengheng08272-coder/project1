@@ -70,6 +70,12 @@ export const config = {
   maxConcurrentUrlFetches: int("MAX_CONCURRENT_URL_FETCHES", 2),
   // Where saved URL-list videos land in the bucket.
   urlFetchFolder: str("URL_FETCH_FOLDER", "urls"),
+  // Sent with every m3u8fetch.js request; some CDNs 403 a request with no
+  // recognizable browser User-Agent even when the Referer is correct.
+  m3u8UserAgent: str(
+    "M3U8_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  ),
   maxConcurrentDownloads: int("MAX_CONCURRENT_DOWNLOADS", 0),
   // Telegram's own per-account throttle, not a cap we invent: teleproto already
   // opens up to 8 parallel connections per download and grows the window
