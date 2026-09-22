@@ -14,6 +14,7 @@ import * as forwarder from "./forwarder.js";
 import { handleMessage as handleLinkBotMessage } from "./linkBot.js";
 import { recordManualUpload } from "./library.js";
 import * as mirror from "./mirror.js";
+import * as pageResolve from "./pageResolve.js";
 import * as takeout from "./takeout.js";
 import * as r2 from "./r2.js";
 import * as s3migrate from "./s3migrate.js";
@@ -574,6 +575,25 @@ app.post(
     if (!url) return res.status(400).json({ success: false, error: "A URL is required." });
     await urlfetch.assertPublicUrl(url);
     res.json({ success: true });
+  })
+);
+
+/**
+ * Resolves an ordinary webpage URL (a "watch" page, not a direct file) to
+ * the raw .m3u8/media URL actually playing on it, via yt-dlp -- the same
+ * link a person would otherwise dig out of the browser's DevTools Network
+ * tab by hand. Nothing is downloaded; this only extracts.
+ */
+app.post(
+  "/api/urls/resolve",
+  requireApiKey,
+  route(async (req, res) => {
+    const url = String(req.body?.url ?? "").trim();
+    if (!url) return res.status(400).json({ success: false, error: "A URL is required." });
+    await urlfetch.assertPublicUrl(url);
+    const referer = String(req.body?.referer ?? "").trim();
+    const result = await pageResolve.resolvePageUrl(url, referer);
+    res.json({ success: true, ...result });
   })
 );
 
