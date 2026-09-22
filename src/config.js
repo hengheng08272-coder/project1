@@ -64,6 +64,10 @@ export const config = {
   s3ForcePathStyle: str("S3_FORCE_PATH_STYLE") === "true",
 
   workerInterval: int("WORKER_INTERVAL", 30),
+  // Minutes between automatic re-scans of a group with auto_rescan enabled --
+  // keeps new episodes showing up on their own instead of only ever appearing
+  // after someone clicks "Scan" by hand.
+  autoRescanMinutes: int("AUTO_RESCAN_MINUTES", 30),
   // How many list URLs are pulled into R2 at once. These are plain HTTP
   // transfers with no Telegram flood limit behind them, so the only ceiling is
   // the link -- but two at a time keeps one slow host from stalling the rest.

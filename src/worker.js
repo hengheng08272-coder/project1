@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { applyAutoRules, processQueue } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
+import { scanGroup } from "./scanner.js";
 import { isAuthorized } from "./telegram.js";
 import * as urlfetch from "./urlfetch.js";
 
@@ -27,7 +28,39 @@ export async function loop() {
   }
 }
 
+/**
+ * Re-scans any group with auto_rescan on whose last scan is older than
+ * config.autoRescanMinutes -- the same effect as clicking "Scan" by hand,
+ * just on a schedule instead. A manual/URL-list group (chat_id "manual:...")
+ * is never a real Telegram chat, so it's excluded rather than left to fail.
+ */
+async function autoRescanGroups() {
+  const cutoff = new Date(Date.now() - config.autoRescanMinutes * 60 * 1000).toISOString();
+  const groups = rows(
+    await db()
+      .from("groups")
+      .select("id, chat_id, last_scanned_at")
+      .eq("auto_rescan", true)
+      .not("chat_id", "like", "manual:%")
+  );
+  const due = groups.filter((g) => !g.last_scanned_at || g.last_scanned_at < cutoff);
+
+  let rescanned = 0;
+  for (const group of due) {
+    try {
+      await scanGroup(group.id);
+      rescanned += 1;
+    } catch (err) {
+      console.error(`Auto-rescan of group ${group.id} failed:`, err?.message ?? err);
+    }
+  }
+  return rescanned;
+}
+
 async function onePass() {
+  const rescanned = await autoRescanGroups();
+  if (rescanned) console.log(`Auto-rescan refreshed ${rescanned} group(s)`);
+
   const { queued } = await applyAutoRules();
   if (queued) console.log(`Auto rules queued ${queued} episode(s)`);
 
