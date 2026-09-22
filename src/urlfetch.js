@@ -14,8 +14,8 @@ import fs from "node:fs/promises";
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { recordManualUpload } from "./library.js";
-import { downloadM3u8, isM3u8Url } from "./m3u8fetch.js";
 import * as r2 from "./r2.js";
+import { downloadWithYtdlp, isDirectFileUrl } from "./ytdlp.js";
 
 const running = new Set();
 const MAX_REDIRECTS = 5;
@@ -97,11 +97,15 @@ export async function saveItem(itemId) {
     let publicUrl;
     let size;
 
-    if (isM3u8Url(item.url)) {
-      // yt-dlp stitches the fragments locally first -- there is no single
-      // response stream to pipe straight into R2 the way a plain file has.
+    if (!isDirectFileUrl(item.url)) {
+      // Anything that isn't a link to a plain media file already -- an HLS
+      // playlist, a DASH manifest, or a webpage with a player embedded in it
+      // -- goes through yt-dlp instead of a plain fetch, which would only
+      // ever save the HTML/manifest text, not a video. yt-dlp stitches
+      // fragments locally first, so there is no single response stream to
+      // pipe straight into R2 the way a direct file has.
       const hint = item.label ? `${item.label}.mp4` : "video.mp4";
-      const localPath = await downloadM3u8(item.url, item.referer || "", hint);
+      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint);
       try {
         fileName = hint;
         key = buildListItemKey(showTitle, item, fileName);
