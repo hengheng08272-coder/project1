@@ -128,6 +128,11 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
     // internal buffer for minutes (often until the whole run ends) instead
     // of reaching onProgress as they're printed.
     const child = spawn("yt-dlp", args, { env: { ...process.env, PYTHONUNBUFFERED: "1" } });
+    // The last line alone is often just yt-dlp's own generic wrapper message
+    // ("ffmpeg exited with code 1") with the actual reason on the lines
+    // ffmpeg printed just before it -- keep a short tail instead of one line
+    // so a real failure is diagnosable from the error column, not a dead end.
+    const recentErrLines = [];
     let lastErrLine = "";
     let settled = false;
 
@@ -146,13 +151,26 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
       });
     }
 
+    // ffmpeg's own error detail (as the external m3u8 downloader) can land on
+    // either stream depending on how yt-dlp relays it, so both feed the same
+    // tail buffer -- only stderr also updates lastErrLine, kept as the
+    // single-line summary most failures still only need.
+    const trackErrLines = (chunk) => {
+      const lines = chunk.toString("utf8").split(/\r?\n/).filter(Boolean);
+      for (const line of lines) {
+        recentErrLines.push(line.slice(0, 400));
+        if (recentErrLines.length > 20) recentErrLines.shift();
+      }
+      return lines;
+    };
     child.stderr.on("data", (chunk) => {
       bumpStallTimer();
-      const lines = chunk.toString("utf8").split(/\r?\n/).filter(Boolean);
-      if (lines.length) lastErrLine = lines[lines.length - 1].slice(0, 400);
+      const lines = trackErrLines(chunk);
+      if (lines.length) lastErrLine = lines[lines.length - 1];
     });
     child.stdout.on("data", (chunk) => {
       bumpStallTimer();
+      trackErrLines(chunk);
       if (!onProgress) return;
       const match = PROGRESS_RE.exec(chunk.toString("utf8"));
       if (match) onProgress(Math.min(99, Math.round(Number.parseFloat(match[1]))));
@@ -168,7 +186,13 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
       settled = true;
       clearTimeout(stallTimer);
       if (code === 0) resolve({ ok: true });
-      else resolve({ ok: false, error: lastErrLine || `yt-dlp exited with code ${code}.` });
+      else {
+        // Trailing lines matter more than leading ones for "why did this
+        // fail" -- take the last several instead of just the very last, so
+        // a generic wrapper summary doesn't hide ffmpeg's own error above it.
+        const detail = recentErrLines.slice(-8).join(" | ") || lastErrLine;
+        resolve({ ok: false, error: detail || `yt-dlp exited with code ${code}.` });
+      }
     });
   });
 }
