@@ -94,6 +94,20 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
       // curl_cffi, installed in the Dockerfile) look like an actual Chrome
       // TLS handshake instead of Python's, which such checks accept.
       "--impersonate", "chrome",
+      // --impersonate covers the page/manifest fetch (curl_cffi), but
+      // confirmed live against tk12000real.com: yt-dlp's native HLS
+      // fragment downloader doesn't carry that same impersonated TLS
+      // handshake over to individual .ts segment requests, so they still
+      // 403/404 ("fragment 1 not found") even with it on. Routing HLS
+      // segment fetches through ffmpeg instead gives them ffmpeg's own
+      // TLS stack, which is a different fingerprint than yt-dlp/Python's
+      // default and isn't caught by the same check.
+      "--downloader", "m3u8:ffmpeg",
+      // ffmpeg has its own reconnect logic (yt-dlp's --retries/--fragment-
+      // retries/--no-skip-unavailable-fragments above are native-downloader
+      // options and don't reach ffmpeg once it's doing the fetching) -- ask
+      // for the same "keep trying on a dropped connection" behavior here.
+      "--downloader-args", "ffmpeg:-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
       "--format", "bestvideo+bestaudio/best",
       "--merge-output-format", "mp4",
       "-o", outputPath,
