@@ -61,6 +61,15 @@ function runOnce(sourceUrl, referer, outputPath) {
       "--fragment-retries", "20",
       "--retry-sleep", "fragment:exp=1:30",
       "--retry-sleep", "http:exp=1:30",
+      // yt-dlp's own default for HLS is to skip a fragment it can't fetch
+      // after retries and still exit 0 -- so a mid-download token expiry or
+      // a flaky CDN silently hands back a shorter, truncated video with no
+      // error at all. Turning that off makes a lost fragment abort the run
+      // instead, so downloadWithYtdlp's retry loop below (with --continue,
+      // which resumes from the fragments already on disk) actually gets a
+      // chance to finish the file, rather than the caller mistaking a
+      // partial merge for a completed download.
+      "--no-skip-unavailable-fragments",
       "--format", "bestvideo+bestaudio/best",
       "--merge-output-format", "mp4",
       "-o", outputPath,
