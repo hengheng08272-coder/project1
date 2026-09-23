@@ -192,12 +192,30 @@ export async function listAccounts() {
 }
 
 /** Registers a new extra account's api_id/api_hash/phone -- not yet signed in. */
+/**
+ * api_id/api_hash identify the *application*, not the phone number signing
+ * in with it -- Telegram is fine with the same pair logging in any number
+ * of separate accounts. So a second account normally needs nothing but a
+ * phone number: it reuses the default account's own api_id/api_hash unless
+ * one is explicitly given (still supported for an operator who wants a
+ * distinct app credential per account).
+ */
 export async function addAccount({ label, apiId, apiHash, phone }) {
-  if (!apiId || !apiHash || !phone) throw new Error("api_id, api_hash and phone are all required.");
+  if (!phone) throw new Error("A phone number is required.");
+  let finalApiId = apiId;
+  let finalApiHash = apiHash;
+  if (!finalApiId || !finalApiHash) {
+    const conf = await telegramSettings();
+    finalApiId = finalApiId || conf.apiId;
+    finalApiHash = finalApiHash || conf.apiHash;
+  }
+  if (!finalApiId || !finalApiHash) {
+    throw new Error("No api_id/api_hash is available yet -- connect the default account first (Settings › Telegram).");
+  }
   const [row] = rows(
     await db()
       .from("telegram_accounts")
-      .insert({ label: label || "Account", api_id: String(apiId), api_hash: apiHash, phone })
+      .insert({ label: label || "Account", api_id: String(finalApiId), api_hash: finalApiHash, phone })
       .select()
   );
   return row;
