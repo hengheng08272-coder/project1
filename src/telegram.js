@@ -188,7 +188,12 @@ export async function logout(accountId = null) {
 
 /** The extra accounts beyond the default one, for the account picker in Add Group. */
 export async function listAccounts() {
-  return rows(await db().from("telegram_accounts").select("id, label, phone, connected, account_first_name, account_username").order("created_at", { ascending: true }));
+  return rows(
+    await db()
+      .from("telegram_accounts")
+      .select("id, label, phone, connected, account_first_name, account_last_name, account_username, account_user_id")
+      .order("created_at", { ascending: true })
+  );
 }
 
 /** Registers a new extra account's api_id/api_hash/phone -- not yet signed in. */

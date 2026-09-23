@@ -208,6 +208,13 @@ app.post(
   })
 );
 
+/** Signs an extra account out, clearing its session -- the account row itself stays, unlike delete. */
+app.post(
+  "/api/telegram/accounts/:id/logout",
+  requireApiKey,
+  route(async (req, res) => res.json(await telegram.logout(req.params.id)))
+);
+
 // ---------------------------------------------------------------- groups
 
 app.post(
