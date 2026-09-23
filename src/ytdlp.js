@@ -70,6 +70,13 @@ function runOnce(sourceUrl, referer, outputPath) {
       // chance to finish the file, rather than the caller mistaking a
       // partial merge for a completed download.
       "--no-skip-unavailable-fragments",
+      // Some Cloudflare-fronted CDNs wave a cached manifest through but bot-
+      // check every uncached request past it by TLS/HTTP fingerprint, not
+      // just headers -- so segment fetches 403 even with a correct Referer
+      // and User-Agent. --impersonate makes yt-dlp's requests (via
+      // curl_cffi, installed in the Dockerfile) look like an actual Chrome
+      // TLS handshake instead of Python's, which such checks accept.
+      "--impersonate", "chrome",
       "--format", "bestvideo+bestaudio/best",
       "--merge-output-format", "mp4",
       "-o", outputPath,

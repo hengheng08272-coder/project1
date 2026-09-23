@@ -14,7 +14,10 @@ import { config } from "./config.js";
 /** Runs `yt-dlp --dump-json` and returns the parsed info dict, without downloading anything. */
 function dumpInfo(pageUrl, referer) {
   return new Promise((resolve, reject) => {
-    const args = ["--dump-json", "--no-warnings", "--no-playlist", "--no-check-certificate"];
+    // --impersonate: see ytdlp.js's runOnce for why -- the same
+    // Cloudflare-style bot check that 403s a real download's segments can
+    // just as well 403 the page fetch this resolve step depends on.
+    const args = ["--dump-json", "--no-warnings", "--no-playlist", "--no-check-certificate", "--impersonate", "chrome"];
     if (referer) {
       args.push("--referer", referer);
       args.push("--add-header", `User-Agent: ${config.m3u8UserAgent}`);
