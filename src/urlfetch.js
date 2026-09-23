@@ -98,7 +98,7 @@ export async function saveItem(itemId) {
     // piling into a single flat "urls/" bucket with no way to tell them apart.
     const showTitle = (list?.title || "").trim() || config.urlFetchFolder;
 
-    await patch(itemId, { status: "downloading", error: null });
+    await patch(itemId, { status: "downloading", error: null, progress: null });
 
     let fileName;
     let key;
@@ -113,7 +113,20 @@ export async function saveItem(itemId) {
       // fragments locally first, so there is no single response stream to
       // pipe straight into R2 the way a direct file has.
       const hint = item.label ? `${item.label}.mp4` : "video.mp4";
-      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint);
+      // Throttled so a fast-moving download doesn't turn into a write per
+      // percentage point -- the frontend already polls every few seconds
+      // while anything is downloading, so anything faster than that is
+      // wasted writes.
+      let lastReportedProgress = -1;
+      let lastProgressWriteAt = 0;
+      const onProgress = (pct) => {
+        const now = Date.now();
+        if (pct === lastReportedProgress || now - lastProgressWriteAt < 2000) return;
+        lastReportedProgress = pct;
+        lastProgressWriteAt = now;
+        patch(itemId, { progress: pct }).catch(() => {});
+      };
+      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint, onProgress);
       try {
         fileName = hint;
         key = buildListItemKey(showTitle, item, fileName);
@@ -171,6 +184,7 @@ export async function saveItem(itemId) {
       r2_url: publicUrl,
       file_size: Number.isFinite(size) ? size : null,
       error: null,
+      progress: null,
     });
 
     await recordManualUpload({
@@ -186,7 +200,7 @@ export async function saveItem(itemId) {
   } catch (err) {
     const message = String(err?.message ?? err).slice(0, 500);
     console.error(`Saving URL item ${itemId} to R2 failed:`, message);
-    await patch(itemId, { status: "failed", error: message }).catch(() => {});
+    await patch(itemId, { status: "failed", error: message, progress: null }).catch(() => {});
   } finally {
     running.delete(itemId);
   }

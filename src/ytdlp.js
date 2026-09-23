@@ -49,12 +49,20 @@ function originOf(refererUrl) {
   }
 }
 
+const PROGRESS_RE = /\[download\]\s+(\d+(?:\.\d+)?)%/;
+
 /** Runs yt-dlp once, resolving with its outcome instead of throwing, so the caller can decide whether to retry. */
-function runOnce(sourceUrl, referer, outputPath) {
+function runOnce(sourceUrl, referer, outputPath, onProgress) {
   return new Promise((resolve) => {
     const args = [
       "--no-check-certificate",
       "--continue",
+      // One progress line per update instead of the default single
+      // carriage-return-rewritten line -- onProgress below reads whichever
+      // one arrived most recently, but a raw \r-only stream can arrive
+      // split across chunk boundaries in a way that hides the percentage
+      // entirely until the next write.
+      "--newline",
       "-N", "1",
       "--socket-timeout", "60",
       "--retries", "20",
@@ -97,6 +105,12 @@ function runOnce(sourceUrl, referer, outputPath) {
       const lines = chunk.toString("utf8").split(/\r?\n/).filter(Boolean);
       if (lines.length) lastErrLine = lines[lines.length - 1].slice(0, 400);
     });
+    if (onProgress) {
+      child.stdout.on("data", (chunk) => {
+        const match = PROGRESS_RE.exec(chunk.toString("utf8"));
+        if (match) onProgress(Math.min(99, Math.round(Number.parseFloat(match[1]))));
+      });
+    }
     child.on("error", (err) => resolve({ ok: false, error: `Could not start yt-dlp: ${err.message}` }));
     child.on("close", (code) => {
       if (code === 0) resolve({ ok: true });
@@ -110,13 +124,13 @@ function runOnce(sourceUrl, referer, outputPath) {
  * failure. The caller uploads that file to R2 and is responsible for
  * deleting it afterward (same contract as downloader.js/linkBot.js).
  */
-export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint) {
+export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProgress) {
   await fs.mkdir(config.downloadDir, { recursive: true });
   const localPath = path.join(config.downloadDir, `ytdlp-${Date.now()}-${fileNameHint || "video.mp4"}`);
 
   let lastError = "Unknown error.";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const result = await runOnce(sourceUrl, referer, localPath);
+    const result = await runOnce(sourceUrl, referer, localPath, onProgress);
     if (result.ok) {
       const stat = await fs.stat(localPath).catch(() => null);
       if (stat && stat.size > 0) return localPath;
