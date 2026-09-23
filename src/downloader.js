@@ -115,7 +115,7 @@ export async function runDownload(downloadId) {
       return;
     }
 
-    const client = await getClient();
+    const client = await getClient({ accountId: group.account_id });
     const entity = await client.getEntity(normalizeChatId(group.chat_id));
     const message = await withFloodRetry(
       () => client.getMessages(entity, { ids: Number(episode.message_id) }),

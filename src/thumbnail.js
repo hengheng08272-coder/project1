@@ -31,11 +31,11 @@ export async function getEpisodeThumbnail(episodeId) {
   if (!episode.message_id) throw new Error("This episode has no source message to preview.");
 
   const [group] = rows(
-    await db().from("groups").select("chat_id").eq("id", episode.group_id).limit(1)
+    await db().from("groups").select("chat_id, account_id").eq("id", episode.group_id).limit(1)
   );
   if (!group) throw new Error("This episode's group no longer exists.");
 
-  const client = await getClient();
+  const client = await getClient({ accountId: group.account_id });
   const entity = await client.getEntity(normalizeChatId(group.chat_id));
   const message = await withFloodRetry(
     () => client.getMessages(entity, { ids: Number(episode.message_id) }),

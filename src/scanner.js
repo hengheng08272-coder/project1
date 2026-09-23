@@ -70,7 +70,7 @@ export async function scanGroup(groupId, messageLimit = 3000) {
   if (groups.length === 0) throw new Error(`No group with id ${groupId}.`);
   const group = groups[0];
 
-  const client = await getClient();
+  const client = await getClient({ accountId: group.account_id });
   const entity = await client.getEntity(normalizeChatId(group.chat_id));
   const isForum = Boolean(entity.forum);
 
@@ -81,7 +81,7 @@ export async function scanGroup(groupId, messageLimit = 3000) {
   );
 
   if (isForum) {
-    for (const topic of await listTopics(entity)) {
+    for (const topic of await listTopics(client, entity)) {
       const known = topicRows.get(topic.topic_id);
       if (known) {
         if (known.title !== topic.title) {

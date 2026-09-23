@@ -56,6 +56,18 @@ export async function telegramSettings() {
   };
 }
 
+/** Every account added beyond the default one (telegram_settings). */
+export async function telegramAccounts() {
+  return rows(await db().from("telegram_accounts").select("*").order("created_at", { ascending: true }));
+}
+
+/** One extra account by id, or null. account_id on a group is always one of these ids, never telegram_settings'. */
+export async function telegramAccountById(id) {
+  if (!id) return null;
+  const [row] = rows(await db().from("telegram_accounts").select("*").eq("id", id).limit(1));
+  return row ?? null;
+}
+
 /** R2 credentials, preferring environment variables over the database. */
 export async function r2Settings() {
   const fromEnv = {

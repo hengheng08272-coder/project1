@@ -161,6 +161,53 @@ app.post(
   route(async (_req, res) => res.json(await telegram.logout()))
 );
 
+// -------------------------------------------------------- extra accounts
+
+/** Extra Telegram accounts beyond the default one (Settings › Telegram). */
+app.post(
+  "/api/telegram/accounts/list",
+  requireApiKey,
+  route(async (_req, res) => {
+    res.json({ success: true, accounts: await telegram.listAccounts() });
+  })
+);
+
+app.post(
+  "/api/telegram/accounts",
+  requireApiKey,
+  route(async (req, res) => {
+    const { label, api_id: apiId, api_hash: apiHash, phone } = req.body ?? {};
+    const account = await telegram.addAccount({ label, apiId, apiHash, phone });
+    res.json({ success: true, account });
+  })
+);
+
+app.post(
+  "/api/telegram/accounts/:id/delete",
+  requireApiKey,
+  route(async (req, res) => {
+    res.json(await telegram.deleteAccount(req.params.id));
+  })
+);
+
+app.post(
+  "/api/telegram/accounts/:id/send-code",
+  requireApiKey,
+  route(async (req, res) => res.json(await telegram.sendCode(req.params.id)))
+);
+
+app.post(
+  "/api/telegram/accounts/:id/verify-code",
+  requireApiKey,
+  route(async (req, res) => {
+    const { code = "", password = null } = req.body ?? {};
+    if (!code && !password) {
+      return res.status(400).json({ success: false, error: "A code or password is required." });
+    }
+    return res.json(await telegram.verifyCode(String(code), password || null, req.params.id));
+  })
+);
+
 // ---------------------------------------------------------------- groups
 
 app.post(
@@ -171,7 +218,8 @@ app.post(
     if (!chatId) {
       return res.status(400).json({ success: false, error: "chat_id is required." });
     }
-    return res.json(await telegram.describeGroup(chatId));
+    const accountId = req.body?.account_id || null;
+    return res.json(await telegram.describeGroup(chatId, accountId));
   })
 );
 
@@ -180,7 +228,8 @@ app.post(
   requireApiKey,
   route(async (req, res) => {
     const limit = Number(req.body?.limit) || 200;
-    res.json({ success: true, dialogs: await telegram.listDialogs(limit) });
+    const accountId = req.body?.account_id || null;
+    res.json({ success: true, dialogs: await telegram.listDialogs(limit, accountId) });
   })
 );
 
@@ -192,7 +241,8 @@ app.post(
     if (!invite) {
       return res.status(400).json({ success: false, error: "invite is required." });
     }
-    return res.json(await telegram.joinChat(invite));
+    const accountId = req.body?.account_id || null;
+    return res.json(await telegram.joinChat(invite, accountId));
   })
 );
 
@@ -206,7 +256,8 @@ app.post(
       return res.status(400).json({ success: false, error: "query is required." });
     }
     const limit = Math.min(Number(req.body?.limit) || 20, 50);
-    res.json({ success: true, results: await telegram.searchPublicChats(query, limit) });
+    const accountId = req.body?.account_id || null;
+    res.json({ success: true, results: await telegram.searchPublicChats(query, limit, accountId) });
   })
 );
 
