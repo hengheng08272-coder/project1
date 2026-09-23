@@ -60,8 +60,29 @@ function originOf(refererUrl) {
 
 const PROGRESS_RE = /\[download\]\s+(\d+(?:\.\d+)?)%/;
 
+/**
+ * Maps a quality preference to a yt-dlp -f format string.
+ * 'best' merges best video + best audio into mp4 (the original default).
+ * '720p' / '1080p' cap the resolution while still merging audio.
+ * 'audio_only' extracts audio only as m4a.
+ */
+function formatForQuality(quality) {
+  switch (quality) {
+    case "720p":
+      return "bestvideo[height<=720]+bestaudio/best[height<=720]/best";
+    case "1080p":
+      return "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best";
+    case "audio_only":
+      return "bestaudio/best";
+    default:
+      return "bestvideo+bestaudio/best";
+  }
+}
+
 /** Runs yt-dlp once, resolving with its outcome instead of throwing, so the caller can decide whether to retry. */
-function runOnce(sourceUrl, referer, outputPath, onProgress) {
+function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
+  const format = formatForQuality(quality || "best");
+  const isAudioOnly = (quality || "best") === "audio_only";
   return new Promise((resolve) => {
     const args = [
       "--no-check-certificate",
@@ -108,8 +129,8 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
       // options and don't reach ffmpeg once it's doing the fetching) -- ask
       // for the same "keep trying on a dropped connection" behavior here.
       "--downloader-args", "ffmpeg:-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-      "--format", "bestvideo+bestaudio/best",
-      "--merge-output-format", "mp4",
+      "--format", format,
+      ...(isAudioOnly ? ["--extract-audio", "--audio-format", "m4a"] : ["--merge-output-format", "mp4"]),
       "-o", outputPath,
       sourceUrl,
     ];
@@ -202,13 +223,16 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
  * failure. The caller uploads that file to R2 and is responsible for
  * deleting it afterward (same contract as downloader.js/linkBot.js).
  */
-export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProgress) {
+export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProgress, quality) {
   await fs.mkdir(config.downloadDir, { recursive: true });
-  const localPath = path.join(config.downloadDir, `ytdlp-${Date.now()}-${fileNameHint || "video.mp4"}`);
+  const isAudioOnly = (quality || "best") === "audio_only";
+  const ext = isAudioOnly ? "m4a" : "mp4";
+  const hint = fileNameHint || (isAudioOnly ? "audio.m4a" : "video.mp4");
+  const localPath = path.join(config.downloadDir, `ytdlp-${Date.now()}-${hint.replace(/\.(mp4|mkv|webm|mov|avi|flv|ts|m4v|mp3|m4a|wav|flac|aac|ogg)$/i, "")}.${ext}`);
 
   let lastError = "Unknown error.";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const result = await runOnce(sourceUrl, referer, localPath, onProgress);
+    const result = await runOnce(sourceUrl, referer, localPath, onProgress, quality);
     if (result.ok) {
       const stat = await fs.stat(localPath).catch(() => null);
       if (stat && stat.size > 0) return localPath;

@@ -105,14 +105,19 @@ export async function saveItem(itemId) {
     let publicUrl;
     let size;
 
-    if (!isDirectFileUrl(item.url)) {
+    const mode = item.download_mode || "auto";
+    const quality = item.quality_pref || "best";
+    const useYtdlp = mode === "ytdlp" || (mode === "auto" && !isDirectFileUrl(item.url));
+
+    if (useYtdlp) {
       // Anything that isn't a link to a plain media file already -- an HLS
       // playlist, a DASH manifest, or a webpage with a player embedded in it
       // -- goes through yt-dlp instead of a plain fetch, which would only
       // ever save the HTML/manifest text, not a video. yt-dlp stitches
       // fragments locally first, so there is no single response stream to
       // pipe straight into R2 the way a direct file has.
-      const hint = item.label ? `${item.label}.mp4` : "video.mp4";
+      const isAudioOnly = quality === "audio_only";
+      const hint = item.label ? (isAudioOnly ? `${item.label}.m4a` : `${item.label}.mp4`) : (isAudioOnly ? "audio.m4a" : "video.mp4");
       // Throttled so a fast-moving download doesn't turn into a write per
       // percentage point -- the frontend already polls every few seconds
       // while anything is downloading, so anything faster than that is
@@ -126,18 +131,22 @@ export async function saveItem(itemId) {
         lastProgressWriteAt = now;
         patch(itemId, { progress: pct }).catch(() => {});
       };
-      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint, onProgress);
+      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint, onProgress, quality);
       try {
         fileName = hint;
         key = buildListItemKey(showTitle, item, fileName);
         const stat = await fs.stat(localPath);
-        const uploadedUrl = await r2.upload(localPath, key, "video/mp4");
+        const contentType = isAudioOnly ? "audio/mp4" : "video/mp4";
+        const uploadedUrl = await r2.upload(localPath, key, contentType);
         publicUrl = uploadedUrl === key ? null : uploadedUrl;
         size = stat.size;
       } finally {
         await fs.rm(localPath, { force: true }).catch(() => {});
       }
     } else {
+      // mode === "direct" or mode === "auto" with a direct file URL.
+      // A .ts URL that is a single segment (not an HLS playlist) still works
+      // here as a plain fetch, but the content-type is video/mp2t, not mp4.
       let response = await fetchFollowingRedirects(item.url);
 
       if (!response.ok && EXPIRED_LINK_STATUSES.has(response.status) && item.referer) {
@@ -168,10 +177,11 @@ export async function saveItem(itemId) {
 
       fileName = fileNameFor(item, response);
       key = buildListItemKey(showTitle, item, fileName);
+      const contentType = response.headers.get("content-type") || guessContentTypeFromExt(fileName);
       const uploadedUrl = await r2.uploadBody(
         Readable.fromWeb(response.body),
         key,
-        response.headers.get("content-type") || "video/mp4"
+        contentType
       );
       const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
       publicUrl = uploadedUrl === key ? null : uploadedUrl;
@@ -332,5 +342,41 @@ const extensionOf = (name) => {
 
 const extensionFromType = (contentType) => {
   const type = (contentType || "").split(";")[0].trim().toLowerCase();
-  return { "video/mp4": "mp4", "video/x-matroska": "mkv", "video/webm": "webm", "video/quicktime": "mov" }[type] || "";
+  return {
+    "video/mp4": "mp4",
+    "video/x-matroska": "mkv",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/mp2t": "ts",
+    "video/mpeg": "ts",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/flac": "flac",
+    "audio/aac": "aac",
+  }[type] || "";
 };
+
+/** Guesses a content-type from a filename extension for the direct-fetch path. */
+function guessContentTypeFromExt(fileName) {
+  const ext = extensionOf(fileName);
+  const map = {
+    mp4: "video/mp4",
+    mkv: "video/x-matroska",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    ts: "video/mp2t",
+    m4v: "video/mp4",
+    mp3: "audio/mpeg",
+    m4a: "audio/mp4",
+    wav: "audio/wav",
+    ogg: "audio/ogg",
+    flac: "audio/flac",
+    aac: "audio/aac",
+  };
+  return map[ext] || "video/mp4";
+}
