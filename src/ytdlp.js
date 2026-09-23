@@ -99,7 +99,12 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
       args.unshift("--referer", referer);
     }
 
-    const child = spawn("yt-dlp", args);
+    // yt-dlp is Python, and Python fully block-buffers stdout (not just
+    // line-buffers it) whenever it isn't a TTY -- which a Node child_process
+    // pipe never is. Without this, --newline's progress lines sit in an
+    // internal buffer for minutes (often until the whole run ends) instead
+    // of reaching onProgress as they're printed.
+    const child = spawn("yt-dlp", args, { env: { ...process.env, PYTHONUNBUFFERED: "1" } });
     let lastErrLine = "";
     child.stderr.on("data", (chunk) => {
       const lines = chunk.toString("utf8").split(/\r?\n/).filter(Boolean);
