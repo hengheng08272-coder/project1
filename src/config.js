@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,6 +9,30 @@ const int = (name, fallback) => {
   const parsed = Number.parseInt(str(name), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+
+/**
+ * YTDLP_COOKIES_FILE wants a path on disk, but a host like Railway only
+ * offers plain env vars, not file uploads -- there is nowhere to put a
+ * cookies.txt for that variable to point at. YTDLP_COOKIES_CONTENT lets the
+ * whole Netscape-format file be pasted as the variable's value instead; this
+ * writes it out once at startup and points ytdlpCookiesFile at the result,
+ * so ytdlp.js's `--cookies` flag works the same either way. An explicit
+ * YTDLP_COOKIES_FILE always wins, for a setup that does have a real path.
+ */
+function resolveCookiesFile() {
+  const explicitPath = str("YTDLP_COOKIES_FILE");
+  if (explicitPath) return explicitPath;
+  const content = str("YTDLP_COOKIES_CONTENT");
+  if (!content) return "";
+  const written = path.join(os.tmpdir(), "ytdlp-cookies.txt");
+  try {
+    fs.writeFileSync(written, content, "utf8");
+    return written;
+  } catch (err) {
+    console.error("Could not write YTDLP_COOKIES_CONTENT to a file:", err?.message ?? err);
+    return "";
+  }
+}
 
 export const config = {
   apiKey: str("BACKEND_API_KEY"),
@@ -80,11 +105,14 @@ export const config = {
     "M3U8_USER_AGENT",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
   ),
-  // Optional path to a Netscape-format cookies.txt, passed to yt-dlp via
-  // --cookies for sources that only serve the real video to a logged-in
-  // session. Unset by default -- ytdlp.js runs without cookies until this is
-  // pointed at a file that exists.
-  ytdlpCookiesFile: str("YTDLP_COOKIES_FILE"),
+  // Path to a Netscape-format cookies.txt, passed to yt-dlp via --cookies
+  // for sources that only serve the real video (or, as with tk12000real.com,
+  // only serve segment .ts files rather than 403ing them) to a session with
+  // valid cookies. Set YTDLP_COOKIES_FILE to a real path, or paste the
+  // file's whole content into YTDLP_COOKIES_CONTENT when there is nowhere to
+  // upload an actual file (see resolveCookiesFile above). Unset by default --
+  // ytdlp.js runs without cookies until one of the two is set.
+  ytdlpCookiesFile: resolveCookiesFile(),
   maxConcurrentDownloads: int("MAX_CONCURRENT_DOWNLOADS", 0),
   // Telegram's own per-account throttle, not a cap we invent: teleproto already
   // opens up to 8 parallel connections per download and grows the window
