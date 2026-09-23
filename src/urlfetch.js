@@ -14,10 +14,18 @@ import fs from "node:fs/promises";
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { recordManualUpload } from "./library.js";
+import { resolvePageUrl } from "./pageResolve.js";
 import * as r2 from "./r2.js";
 import { downloadWithYtdlp, isDirectFileUrl } from "./ytdlp.js";
 
 const running = new Set();
+// A signed CDN link (the kind pageResolve.js hands back for an HLS/DASH
+// source) answers with one of these once its token expires. A stale link
+// that sat in the queue is retried once by re-resolving the page fresh --
+// the same resolution a never-pre-resolved link already gets at download
+// time -- rather than being marked failed over a token that was valid when
+// the item was added.
+const EXPIRED_LINK_STATUSES = new Set([401, 403, 404, 410]);
 const MAX_REDIRECTS = 5;
 
 /** Marks every item of a list that is not already in R2 as queued. */
@@ -117,7 +125,30 @@ export async function saveItem(itemId) {
         await fs.rm(localPath, { force: true }).catch(() => {});
       }
     } else {
-      const response = await fetchFollowingRedirects(item.url);
+      let response = await fetchFollowingRedirects(item.url);
+
+      if (!response.ok && EXPIRED_LINK_STATUSES.has(response.status) && item.referer) {
+        // pageResolve.js sets `referer` to the source page's own URL when
+        // resolving one (see resolvePageUrl's fallback), so a link added via
+        // Quick Add or Auto Import's "Auto-detect video link" can be
+        // re-resolved from the same page it originally came from -- one
+        // retry, since a page that has moved on for real should fail the
+        // same way twice.
+        void response.body?.cancel();
+        try {
+          const fresh = await resolvePageUrl(item.referer, item.referer);
+          if (fresh.url && fresh.url !== item.url) {
+            await patch(itemId, { url: fresh.url, referer: fresh.referer });
+            item.url = fresh.url;
+            item.referer = fresh.referer;
+            response = await fetchFollowingRedirects(item.url);
+          }
+        } catch (err) {
+          console.error(`Re-resolving expired link for item ${itemId} failed:`, err?.message ?? err);
+          // Falls through to the original response below -- still reported as the real error.
+        }
+      }
+
       if (!response.ok || !response.body) {
         throw new Error(`The server answered ${response.status} ${response.statusText}.`);
       }
