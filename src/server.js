@@ -21,6 +21,7 @@ import * as s3migrate from "./s3migrate.js";
 import * as s3source from "./s3source.js";
 import * as urlfetch from "./urlfetch.js";
 import { scanGroup } from "./scanner.js";
+import { getEpisodeThumbnail } from "./thumbnail.js";
 import * as subscription from "./subscription.js";
 import * as telegram from "./telegram.js";
 import * as telegramStorage from "./telegramStorage.js";
@@ -436,6 +437,20 @@ app.get(
     res.setHeader("Content-Type", contentType);
     if (contentLength) res.setHeader("Content-Length", String(contentLength));
     stream.pipe(res);
+  })
+);
+
+/**
+ * A still preview of an episode's video, fetched straight from Telegram
+ * (its own message thumbnail) and cached to R2 -- lets the frontend show
+ * something before the video is actually downloaded.
+ */
+app.get(
+  "/api/episodes/:id/thumbnail",
+  requireApiKey,
+  route(async (req, res) => {
+    const url = await getEpisodeThumbnail(req.params.id);
+    res.redirect(url);
   })
 );
 
