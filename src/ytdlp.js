@@ -22,6 +22,15 @@ import { config } from "./config.js";
 
 const MAX_ATTEMPTS = 6;
 const BACKOFF_SECONDS = 15;
+// A CDN can accept the connection and then just never send another byte --
+// no error, no close, nothing -- and yt-dlp itself has no built-in ceiling
+// for that (--socket-timeout only covers a single read/connect, not the
+// whole process sitting idle). Without this, one bad request hangs the
+// item, and the slot it holds, forever: the retry loop below never even
+// gets a chance to run. Real activity (a fragment finishing, a retry
+// message) resets this on every stdout/stderr byte, so an active-but-slow
+// download is never penalized -- only true silence is.
+const STALL_TIMEOUT_MS = 120_000;
 
 const DIRECT_FILE_EXT = /\.(mp4|mkv|webm|mov|avi|flv|ts|m4v|mp3|m4a|wav|flac|aac|ogg)(\?|$)/i;
 
@@ -106,18 +115,44 @@ function runOnce(sourceUrl, referer, outputPath, onProgress) {
     // of reaching onProgress as they're printed.
     const child = spawn("yt-dlp", args, { env: { ...process.env, PYTHONUNBUFFERED: "1" } });
     let lastErrLine = "";
+    let settled = false;
+
+    let stallTimer = setTimeout(onStall, STALL_TIMEOUT_MS);
+    function bumpStallTimer() {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(onStall, STALL_TIMEOUT_MS);
+    }
+    function onStall() {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      resolve({
+        ok: false,
+        error: `yt-dlp produced no output for ${STALL_TIMEOUT_MS / 1000}s and was killed -- likely the CDN accepted the connection and then went silent.`,
+      });
+    }
+
     child.stderr.on("data", (chunk) => {
+      bumpStallTimer();
       const lines = chunk.toString("utf8").split(/\r?\n/).filter(Boolean);
       if (lines.length) lastErrLine = lines[lines.length - 1].slice(0, 400);
     });
-    if (onProgress) {
-      child.stdout.on("data", (chunk) => {
-        const match = PROGRESS_RE.exec(chunk.toString("utf8"));
-        if (match) onProgress(Math.min(99, Math.round(Number.parseFloat(match[1]))));
-      });
-    }
-    child.on("error", (err) => resolve({ ok: false, error: `Could not start yt-dlp: ${err.message}` }));
+    child.stdout.on("data", (chunk) => {
+      bumpStallTimer();
+      if (!onProgress) return;
+      const match = PROGRESS_RE.exec(chunk.toString("utf8"));
+      if (match) onProgress(Math.min(99, Math.round(Number.parseFloat(match[1]))));
+    });
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(stallTimer);
+      resolve({ ok: false, error: `Could not start yt-dlp: ${err.message}` });
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(stallTimer);
       if (code === 0) resolve({ ok: true });
       else resolve({ ok: false, error: lastErrLine || `yt-dlp exited with code ${code}.` });
     });
