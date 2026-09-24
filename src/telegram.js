@@ -475,3 +475,49 @@ export async function describeGroup(chatId, accountId = null) {
     topics: isForum ? await listTopics(c, entity) : [],
   };
 }
+
+/** Turns a raw Api.UserStatus* into something a UI can show without knowing the TL schema. */
+function describeUserStatus(status) {
+  if (!status) return { kind: "unknown" };
+  if (status instanceof Api.UserStatusOnline) return { kind: "online" };
+  if (status instanceof Api.UserStatusOffline) return { kind: "offline", last_seen: status.wasOnline ?? null };
+  if (status instanceof Api.UserStatusRecently) return { kind: "recently" };
+  if (status instanceof Api.UserStatusLastWeek) return { kind: "last_week" };
+  if (status instanceof Api.UserStatusLastMonth) return { kind: "last_month" };
+  return { kind: "hidden" }; // UserStatusEmpty -- privacy setting hides it
+}
+
+/** The role a member's own ChannelParticipant/ChatParticipant variant implies. */
+function describeRole(participant) {
+  if (!participant) return "member";
+  const name = participant.className || "";
+  if (name.includes("Creator")) return "owner";
+  if (name.includes("Admin")) return "admin";
+  if (name.includes("Banned")) return "banned";
+  return "member";
+}
+
+/**
+ * Lists a group's members -- requires the account behind `accountId` to
+ * actually be a member (an admin isn't required to just list; Telegram only
+ * refuses this for very large public channels with hidden member lists).
+ * Used for the read-only "who's in this VIP group" view, not for anything
+ * that acts on members (kick/ban aren't exposed here).
+ */
+export async function listMembers(chatId, accountId = null, limit = 200) {
+  const c = await getClient({ accountId });
+  const entity = await c.getEntity(normalizeChatId(chatId));
+  const participants = await c.getParticipants(entity, { limit: Math.min(Number(limit) || 200, 1000) });
+
+  return participants.map((p) => ({
+    id: String(p.id),
+    first_name: p.firstName ?? null,
+    last_name: p.lastName ?? null,
+    username: p.username ?? null,
+    phone: p.phone ?? null,
+    is_bot: Boolean(p.bot),
+    is_premium: Boolean(p.premium),
+    role: describeRole(p.participant),
+    status: describeUserStatus(p.status),
+  }));
+}

@@ -268,6 +268,21 @@ app.post(
   })
 );
 
+/** Lists a group's members -- read-only, for the "who's in this group" view. */
+app.post(
+  "/api/telegram/groups/members",
+  requireApiKey,
+  route(async (req, res) => {
+    const chatId = String(req.body?.chat_id ?? "").trim();
+    if (!chatId) {
+      return res.status(400).json({ success: false, error: "chat_id is required." });
+    }
+    const accountId = req.body?.account_id || null;
+    const limit = req.body?.limit;
+    res.json({ success: true, members: await telegram.listMembers(chatId, accountId, limit) });
+  })
+);
+
 app.post(
   "/api/telegram/notify",
   requireApiKey,
