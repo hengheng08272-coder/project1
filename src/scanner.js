@@ -4,12 +4,18 @@ import { Api } from "teleproto";
 import { db, nowIso, rows } from "./db.js";
 import { getClient, listTopics, normalizeChatId } from "./telegram.js";
 
-// "EP 12", "EP12", "ep-012", "[EP 12]" and friends.
+// "EP 12", "EP12", "ep-012", "[EP 12]", "ភាគទី 12" and friends.
+//
+// No bare-number fallback on purpose: Khmer titles here look like
+// "<show> វគ្គ 5 ភាគទី 186" (season 5, episode 186), and a catch-all
+// "first number anywhere" pattern grabbed the season number -- tagging
+// hundreds of different episodes as the same EP005. An episode with no
+// recognizable marker now gets no number (null) rather than a wrong one.
 const EP_PATTERNS = [
   /\bEP[\s._-]*0*(\d{1,4})\b/i,
   /\bE[\s._-]*0*(\d{1,4})\b/i,
-  /ភាគ[\s._-]*0*(\d{1,4})/,
-  /\b0*(\d{1,4})\b/,
+  // "ភាគទី 12" -- ទី ("number") usually sits between ភាគ and the digits.
+  /ភាគ(?:ទី)?[\s._-]*0*(\d{1,4})/,
 ];
 
 /** Pulls an episode number out of a caption or filename, best effort. */
