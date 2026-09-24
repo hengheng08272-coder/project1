@@ -299,7 +299,9 @@ app.post(
   "/api/telegram/groups/:groupId/scan",
   requireApiKey,
   route(async (req, res) => {
-    const limit = Number(req.body?.limit) || 3000;
+    // 0/omitted -- scanGroup's own default -- means the full history, so a
+    // scan never silently misses episodes older than some arbitrary cutoff.
+    const limit = Number(req.body?.limit) || 0;
     res.json(await scanGroup(req.params.groupId, limit));
   })
 );

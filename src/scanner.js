@@ -64,8 +64,14 @@ function topicIdOf(message) {
   return replyTo.replyToTopId ?? replyTo.replyToMsgId ?? null;
 }
 
-/** Syncs one group's topics and videos into Supabase. Safe to re-run. */
-export async function scanGroup(groupId, messageLimit = 3000) {
+/**
+ * Syncs one group's topics and videos into Supabase. Safe to re-run.
+ * messageLimit 0 (the default) means no limit at all -- iterMessages then
+ * walks the group's entire history, so nothing older than an arbitrary
+ * cutoff is silently left unscanned. A caller can still pass a smaller
+ * number for a quick, recent-only pass.
+ */
+export async function scanGroup(groupId, messageLimit = 0) {
   const groups = rows(await db().from("groups").select("*").eq("id", groupId).limit(1));
   if (groups.length === 0) throw new Error(`No group with id ${groupId}.`);
   const group = groups[0];
@@ -111,7 +117,7 @@ export async function scanGroup(groupId, messageLimit = 3000) {
   const newEpisodes = [];
   let seen = 0;
 
-  for await (const message of client.iterMessages(entity, { limit: messageLimit })) {
+  for await (const message of client.iterMessages(entity, { limit: messageLimit || undefined })) {
     seen += 1;
     const info = mediaInfo(message);
     if (!info) continue;

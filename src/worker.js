@@ -28,11 +28,21 @@ export async function loop() {
   }
 }
 
+// scanGroup's own default is a full, unbounded history walk -- right for a
+// manual "Scan" click, since the user is waiting for a complete result. This
+// job instead runs unattended every few minutes, so it caps each pass to
+// recent messages: new episodes land near the top of the history anyway, and
+// re-walking the entire history on every tick would only add load and flood
+// risk for a large group without finding anything a previous full scan (or
+// the next manual one) hasn't already.
+const AUTO_RESCAN_MESSAGE_LIMIT = 3000;
+
 /**
  * Re-scans any group with auto_rescan on whose last scan is older than
- * config.autoRescanMinutes -- the same effect as clicking "Scan" by hand,
- * just on a schedule instead. A manual/URL-list group (chat_id "manual:...")
- * is never a real Telegram chat, so it's excluded rather than left to fail.
+ * config.autoRescanMinutes -- a lighter, recent-only pass (see
+ * AUTO_RESCAN_MESSAGE_LIMIT above), not the full history walk a manual
+ * "Scan" click does. A manual/URL-list group (chat_id "manual:...") is never
+ * a real Telegram chat, so it's excluded rather than left to fail.
  */
 async function autoRescanGroups() {
   const cutoff = new Date(Date.now() - config.autoRescanMinutes * 60 * 1000).toISOString();
@@ -48,7 +58,7 @@ async function autoRescanGroups() {
   let rescanned = 0;
   for (const group of due) {
     try {
-      await scanGroup(group.id);
+      await scanGroup(group.id, AUTO_RESCAN_MESSAGE_LIMIT);
       rescanned += 1;
     } catch (err) {
       console.error(`Auto-rescan of group ${group.id} failed:`, err?.message ?? err);
