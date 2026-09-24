@@ -77,7 +77,21 @@ function topicIdOf(message) {
  * cutoff is silently left unscanned. A caller can still pass a smaller
  * number for a quick, recent-only pass.
  */
-export async function scanGroup(groupId, messageLimit = 0) {
+// A full-history scan can run for minutes; a second click on Scan (or the
+// auto-rescan tick) starting another pass of the same group meanwhile is
+// what inserted the same message many times over. One scan per group at a
+// time -- a repeat request just waits for and shares the running one.
+const scansInFlight = new Map();
+
+export function scanGroup(groupId, messageLimit = 0) {
+  const running = scansInFlight.get(groupId);
+  if (running) return running;
+  const scan = runScan(groupId, messageLimit).finally(() => scansInFlight.delete(groupId));
+  scansInFlight.set(groupId, scan);
+  return scan;
+}
+
+async function runScan(groupId, messageLimit) {
   const groups = rows(await db().from("groups").select("*").eq("id", groupId).limit(1));
   if (groups.length === 0) throw new Error(`No group with id ${groupId}.`);
   const group = groups[0];
@@ -151,7 +165,12 @@ export async function scanGroup(groupId, messageLimit = 0) {
 
   for (let i = 0; i < newEpisodes.length; i += 200) {
     const chunk = newEpisodes.slice(i, i + 200);
-    const result = await db().from("episodes").insert(chunk);
+    // Backstop for the lock above (e.g. two backend instances): the
+    // (group_id, message_id) unique index rejects a repeat, and
+    // ignoreDuplicates turns that into a skip instead of a failed scan.
+    const result = await db()
+      .from("episodes")
+      .upsert(chunk, { onConflict: "group_id,message_id", ignoreDuplicates: true });
     if (result.error) throw new Error(result.error.message);
   }
 
