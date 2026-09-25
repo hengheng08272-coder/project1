@@ -1,6 +1,7 @@
 /** Background loop: auto rules, the download queue, and auto-following forwards. */
 import { db, rows } from "./db.js";
 import { config } from "./config.js";
+import * as botJobs from "./botJobs.js";
 import { applyAutoRules, processQueue } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
@@ -18,6 +19,11 @@ export async function loop() {
       // userbot is signed out, so it runs outside the Telegram-only pass.
       const savingUrls = await urlfetch.processQueue();
       if (savingUrls) console.log(`Started saving ${savingUrls} URL(s) to R2`);
+
+      // Bot downloads ride that same queue, so this is where a finished one
+      // gets sent back to whoever asked for it in Telegram.
+      const botReplies = await botJobs.notifyFinishedJobs();
+      if (botReplies) console.log(`Sent ${botReplies} finished download(s) back to the bot`);
 
       if (await isAuthorized()) await onePass();
     } catch (err) {

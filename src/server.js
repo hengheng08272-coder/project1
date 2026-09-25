@@ -11,7 +11,7 @@ import { config } from "./config.js";
 import { db, nowIso, upsertSingle } from "./db.js";
 import { applyAutoRules, retryFailed, runDownload } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
-import { handleMessage as handleLinkBotMessage } from "./linkBot.js";
+import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
 import { recordManualUpload } from "./library.js";
 import * as mirror from "./mirror.js";
 import * as pageResolve from "./pageResolve.js";
@@ -26,7 +26,7 @@ import * as subscription from "./subscription.js";
 import * as telegram from "./telegram.js";
 import * as telegramStorage from "./telegramStorage.js";
 import { signInWithTelegram, signInWithTelegramMiniApp } from "./telegramLogin.js";
-import { answerCallbackQuery, stampDecision } from "./notifyBot.js";
+import { answerCallbackQuery, call as botApi, stampDecision } from "./notifyBot.js";
 import { loop } from "./worker.js";
 
 const app = express();
@@ -784,6 +784,10 @@ app.post(
     const cq = req.body?.callback_query;
     if (!cq) return res.json({ ok: true });
 
+    // The menu bot's own buttons (data "bot:...") are for whoever tapped them,
+    // not the operator, so they are handled before the admin check below.
+    if (await handleBotCallback(cq)) return res.json({ ok: true });
+
     const chatId = String(cq.message?.chat?.id ?? "");
     if (!config.telegramAdminChatId || chatId !== String(config.telegramAdminChatId)) {
       await answerCallbackQuery(cq.id, "Not authorized.");
@@ -841,8 +845,26 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ success: false, error: String(err?.message ?? err).slice(0, 500) });
 });
 
+/**
+ * Points the bot at this deployment's webhook on startup, so a fresh deploy
+ * (or a first-time setup) needs no manual setWebhook call. Telegram treats a
+ * repeat of the same URL as a no-op, and a failure here must never stop the
+ * service from serving the web app.
+ */
+async function registerBotWebhook() {
+  if (!config.telegramLoginBotToken || !config.publicUrl) return;
+  const url = `${config.publicUrl.replace(/\/$/, "")}/api/telegram-bot/webhook`;
+  try {
+    const result = await botApi("setWebhook", { url, allowed_updates: ["message", "callback_query"] });
+    if (result?.ok) console.log(`Telegram bot webhook set to ${url}`);
+  } catch (err) {
+    console.error("Could not set the Telegram bot webhook:", err?.message ?? err);
+  }
+}
+
 const server = app.listen(config.port, () => {
   console.log(`Userbot service listening on http://localhost:${config.port}`);
+  void registerBotWebhook();
   void loop();
 });
 

@@ -59,6 +59,20 @@ export const config = {
   // only one to create). TELEGRAM_ADMIN_CHAT_ID is the operator's own chat
   // id with that bot -- send it any message and check getUpdates to find it.
   telegramAdminChatId: str("TELEGRAM_ADMIN_CHAT_ID"),
+  // The bot menu's "open the app" button. Telegram only accepts an https URL
+  // here, and only opens it as a Mini App when the same URL is registered
+  // with @BotFather -- otherwise the button is simply a link.
+  webAppUrl: str("WEB_APP_URL"),
+  // This service's own public origin, used to register the bot's webhook on
+  // startup. Railway sets RAILWAY_PUBLIC_DOMAIN for us; PUBLIC_URL overrides
+  // it anywhere else.
+  publicUrl:
+    str("PUBLIC_URL") ||
+    (str("RAILWAY_PUBLIC_DOMAIN") ? `https://${str("RAILWAY_PUBLIC_DOMAIN")}` : ""),
+  // How many downloads a new bot user gets before the bot asks them to talk
+  // to the operator. Referring someone adds REFERRAL_BONUS more.
+  botFreeDownloads: int("BOT_FREE_DOWNLOADS", 10),
+  botReferralBonus: int("BOT_REFERRAL_BONUS", 5),
   // Shared secret a phone-automation app (Tasker/MacroDroid/...) presents
   // when POSTing a raw ABA payment-notification text to /api/subscription/aba-ingest.
   // Unset means the endpoint refuses everything -- fail-closed on purpose.
