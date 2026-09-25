@@ -9,7 +9,7 @@
  */
 import { Api } from "teleproto";
 
-import { db, nowIso, rows } from "./db.js";
+import { db, fetchAll, nowIso, rows } from "./db.js";
 import { getClient, normalizeChatId } from "./telegram.js";
 
 // Creating topics back to back trips Telegram's flood limits quickly.
@@ -49,11 +49,11 @@ async function run(mirrorId) {
     const target = await client.getEntity(normalizeChatId(mirror.target_chat_id));
     const targetIsForum = Boolean(target.forum);
 
-    const episodes = rows(
-      await db().from("episodes").select("*").eq("group_id", mirror.source_group_id)
+    const episodes = await fetchAll(() =>
+      db().from("episodes").select("*").eq("group_id", mirror.source_group_id).order("id")
     );
-    const topics = rows(
-      await db().from("topics").select("*").eq("group_id", mirror.source_group_id)
+    const topics = await fetchAll(() =>
+      db().from("topics").select("*").eq("group_id", mirror.source_group_id).order("id")
     );
 
     // Group the source videos by topic, keeping the "no topic" bucket.

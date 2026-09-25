@@ -28,6 +28,27 @@ export function rows(result) {
   return result.data ?? [];
 }
 
+/**
+ * PostgREST caps one response at 1000 rows and says nothing about it: a plain
+ * .select() over a group with 1500 videos quietly returns the first 1000. That
+ * silently truncated every count this service recomputes (a topic with 247
+ * videos was stored as 24) and made a re-scan miss episodes it had already
+ * seen, so any query that means "all of them" has to page.
+ *
+ * `build` is called once per page and must return a fresh query ordered by
+ * something stable (id), which is what makes consecutive pages line up.
+ */
+export const PAGE_SIZE = 1000;
+
+export async function fetchAll(build) {
+  const all = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const page = rows(await build().range(from, from + PAGE_SIZE - 1));
+    all.push(...page);
+    if (page.length < PAGE_SIZE) return all;
+  }
+}
+
 /** Reads the one settings row a table is expected to hold ({} when empty). */
 export async function single(table) {
   const data = rows(await db().from(table).select("*").limit(1));

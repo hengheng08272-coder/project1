@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
-import { db, downloadSettings, nowIso, rows } from "./db.js";
+import { db, downloadSettings, fetchAll, nowIso, rows } from "./db.js";
 import * as r2 from "./r2.js";
 import { storeMessage } from "./telegramStorage.js";
 import { withFloodRetry } from "./floodRetry.js";
@@ -204,8 +204,8 @@ async function fail(downloadId, error, episodeId = null) {
 }
 
 async function refreshCounters(groupId, topicId) {
-  const episodes = rows(
-    await db().from("episodes").select("id, topic_id, status").eq("group_id", groupId)
+  const episodes = await fetchAll(() =>
+    db().from("episodes").select("id, topic_id, status").eq("group_id", groupId).order("id")
   );
   await db()
     .from("groups")
@@ -245,13 +245,15 @@ export async function applyAutoRules() {
   let forwardJobs = 0;
 
   for (const rule of rules) {
-    let query = db()
-      .from("episodes")
-      .select("*")
-      .eq("group_id", rule.group_id)
-      .eq("status", "pending");
-    if (rule.topic_id) query = query.eq("topic_id", rule.topic_id);
-    const candidates = rows(await query);
+    const candidates = await fetchAll(() => {
+      let query = db()
+        .from("episodes")
+        .select("*")
+        .eq("group_id", rule.group_id)
+        .eq("status", "pending");
+      if (rule.topic_id) query = query.eq("topic_id", rule.topic_id);
+      return query.order("id");
+    });
 
     const minBytes = Number(rule.min_file_size_mb ?? 0) * 1024 * 1024;
     const matched = candidates.filter((episode) => {

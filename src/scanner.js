@@ -1,7 +1,7 @@
 /** Scans a Telegram group for its topics and video messages. */
 import { Api } from "teleproto";
 
-import { db, nowIso, rows } from "./db.js";
+import { db, fetchAll, nowIso, rows } from "./db.js";
 import { getClient, listTopics, normalizeChatId } from "./telegram.js";
 
 // "EP 12", "EP12", "ep-012", "[EP 12]", "ភាគទី 12" and friends.
@@ -101,7 +101,9 @@ async function runScan(groupId, messageLimit) {
   const isForum = Boolean(entity.forum);
 
   // 1. Topics — keyed by their Telegram id so re-scans update instead of duplicate.
-  const existingTopics = rows(await db().from("topics").select("*").eq("group_id", groupId));
+  const existingTopics = await fetchAll(() =>
+    db().from("topics").select("*").eq("group_id", groupId).order("id")
+  );
   const topicRows = new Map(
     existingTopics.filter((t) => t.topic_id).map((t) => [String(t.topic_id), t])
   );
@@ -127,8 +129,8 @@ async function runScan(groupId, messageLimit) {
   }
 
   // 2. Videos — one pass over the history, bucketed into topics as we go.
-  const existingEpisodes = rows(
-    await db().from("episodes").select("id, message_id").eq("group_id", groupId)
+  const existingEpisodes = await fetchAll(() =>
+    db().from("episodes").select("id, message_id").eq("group_id", groupId).order("id")
   );
   const knownMessageIds = new Set(
     existingEpisodes.filter((e) => e.message_id).map((e) => String(e.message_id))
@@ -175,8 +177,8 @@ async function runScan(groupId, messageLimit) {
   }
 
   // 3. Counters the UI reads off the group and topic rows.
-  const allEpisodes = rows(
-    await db().from("episodes").select("id, topic_id, status").eq("group_id", groupId)
+  const allEpisodes = await fetchAll(() =>
+    db().from("episodes").select("id, topic_id, status").eq("group_id", groupId).order("id")
   );
   await db()
     .from("groups")

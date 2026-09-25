@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
-import { db, nowIso, rows } from "./db.js";
+import { db, fetchAll, nowIso, rows } from "./db.js";
 import { safeFilename } from "./downloader.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { getClient, normalizeChatId } from "./telegram.js";
@@ -286,14 +286,18 @@ export async function syncAutoFollowJobs() {
   let addedTotal = 0;
 
   for (const job of jobs) {
-    let query = db().from("episodes").select("id");
-    if (job.source_topic_id) query = query.eq("topic_id", job.source_topic_id);
-    else if (job.source_group_id) query = query.eq("group_id", job.source_group_id);
-    else continue;
+    if (!job.source_topic_id && !job.source_group_id) continue;
 
-    const episodeIds = new Set(rows(await query).map((r) => r.id));
-    const existing = rows(
-      await db().from("forward_job_items").select("episode_id").eq("job_id", job.id)
+    const episodes = await fetchAll(() => {
+      const query = db().from("episodes").select("id");
+      return (job.source_topic_id
+        ? query.eq("topic_id", job.source_topic_id)
+        : query.eq("group_id", job.source_group_id)
+      ).order("id");
+    });
+    const episodeIds = new Set(episodes.map((r) => r.id));
+    const existing = await fetchAll(() =>
+      db().from("forward_job_items").select("episode_id").eq("job_id", job.id).order("id")
     );
     const already = new Set(existing.map((r) => r.episode_id));
 
