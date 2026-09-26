@@ -133,6 +133,9 @@ export const config = {
   // automatically. Raising this trades a small chance of an extra FLOOD_WAIT
   // for more throughput on fast links; 0 leaves the library's own default.
   maxDownloadSessions: int("TELEGRAM_MAX_DOWNLOAD_SESSIONS", 0),
+  // How many times one downloaded chunk may be retried (a flood wait counts)
+  // before the whole file is given up on and restarted. See telegram.js.
+  downloadChunkRetries: int("TELEGRAM_DOWNLOAD_CHUNK_RETRIES", 60),
   // How long the forwarder waits between messages by choice, to stay well
   // under Telegram's flood limits. Any FLOOD_WAIT Telegram actually returns is
   // honored in full regardless of this value -- see floodRetry.js.

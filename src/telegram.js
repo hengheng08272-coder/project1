@@ -31,13 +31,21 @@ function newClientFor(conf) {
       // automatically, for every API call -- not just the ones
       // floodRetry.js wraps. Its own default is 60s; config.js raises it.
       floodSleepThreshold: config.floodSleepThresholdSeconds,
-      // 0 (the default) leaves teleproto's own auto-scaling in place, which
-      // already opens up to 8 parallel connections per download and grows
-      // the transfer window on its own -- see config.js for why this is
-      // opt-in rather than always maxed out.
-      ...(config.maxDownloadSessions > 0
-        ? { downloadPool: { maxSessions: config.maxDownloadSessions } }
-        : {}),
+      downloadPool: {
+        // teleproto retries one chunk only 5 times by default, and every
+        // FLOOD_WAIT counts as one of them. A big group download trips
+        // Telegram's 1-2 second GetFile throttle every minute or so, so 5
+        // ran out, the error escaped, and the whole file restarted from
+        // byte 0 -- a 700MB episode never got past its first minute. The
+        // scheduler already sleeps out each wait for the whole DC before
+        // retrying, so a larger budget just means "keep waiting it out".
+        requestRetries: config.downloadChunkRetries,
+        // 0 (the default) leaves teleproto's own auto-scaling in place, which
+        // already opens up to 8 parallel connections per DC and grows the
+        // transfer window on its own -- see config.js for why this is opt-in
+        // rather than always maxed out.
+        ...(config.maxDownloadSessions > 0 ? { maxSessions: config.maxDownloadSessions } : {}),
+      },
     }
   );
 }

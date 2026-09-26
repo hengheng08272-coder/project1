@@ -134,26 +134,40 @@ export async function runDownload(downloadId) {
     );
 
     let lastReport = 0;
+    let lastBytes = 0;
     await withFloodRetry(
-      () =>
-        client.downloadMedia(found, {
+      () => {
+        // A whole-file retry starts from byte 0 again, so the speed baseline
+        // has to start over with it.
+        lastReport = Date.now();
+        lastBytes = 0;
+        return client.downloadMedia(found, {
           outputFile: localPath,
           progressCallback: (received, total) => {
             const now = Date.now();
             if (now - lastReport < 2000) return; // keep the write rate sane
-            lastReport = now;
             const done = Number(received);
             const size = Number(total);
-            void db()
+            const mbps = ((done - lastBytes) / (1024 * 1024)) / ((now - lastReport) / 1000);
+            lastReport = now;
+            lastBytes = done;
+            // A Supabase query builder does nothing until it is awaited or
+            // .then()'d -- this used to be `void db()...`, which built the
+            // update and never sent it, so every download sat at 0% for its
+            // whole run. .then() sends it without holding up the download.
+            db()
               .from("downloads")
               .update({
                 progress: size ? Math.floor((done / size) * 90) : 0,
                 downloaded_bytes: done,
                 total_bytes: size,
+                speed_mbps: Math.max(Math.round(mbps * 100) / 100, 0),
               })
-              .eq("id", downloadId);
+              .eq("id", downloadId)
+              .then(null, () => {});
           },
-        }),
+        });
+      },
       { label: `download for episode ${episode.id}` }
     );
 
