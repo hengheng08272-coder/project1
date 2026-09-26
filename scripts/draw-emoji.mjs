@@ -6,9 +6,15 @@
 //   node scripts/draw-emoji.mjs            -> writes the tiles
 //   node scripts/draw-emoji.mjs sheet.png  -> also a preview sheet
 //
+// Tiles marked `animate` are also written as .webm (VP9 with alpha, 100x100,
+// 2 s loop at 30 fps): Telegram's format for moving custom emoji. That needs
+// ffmpeg with libvpx (FFMPEG=/path/to/ffmpeg if it is not on PATH).
+//
 // After changing tiles, the operator runs /makeemoji in the bot to rebuild
 // the pack.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +26,11 @@ GlobalFonts.registerFromPath(path.join(ROOT, "assets", "fonts", "Inter_800ExtraB
 
 const S = 100;
 const R = 26;
+const FPS = 30;
+const FRAMES = 60; // 2 s loop
+const FFMPEG = process.env.FFMPEG || "ffmpeg";
+const TAU = Math.PI * 2;
+const MAX_WEBM_BYTES = 256 * 1024; // Telegram's cap for a video custom emoji
 
 function sparkle(g, x, y, r) {
   g.save();
@@ -36,10 +47,11 @@ function sparkle(g, x, y, r) {
   g.restore();
 }
 
-/** One glossy tile. `draw` paints the symbol in white (or its own colours). */
-function tile(name, [top, bottom], draw, { sparkles = false, dark = false } = {}) {
-  const c = createCanvas(S, S);
-  const g = c.getContext("2d");
+/** Moving sparkle size: a slow twinkle, each one on its own phase. */
+const twinkle = (t, phase) => 0.55 + 0.45 * Math.sin(TAU * (t * 2 + phase));
+
+/** One tile at moment t. `draw(g, t)` paints the symbol in white (or its own colours). */
+function paint(g, [top, bottom], draw, { sparkles = false, dark = false, sweep = false }, t) {
   g.beginPath();
   g.roundRect(2, 2, 96, 96, R);
   g.clip();
@@ -56,7 +68,7 @@ function tile(name, [top, bottom], draw, { sparkles = false, dark = false } = {}
   shine.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = shine;
   g.beginPath();
-  g.ellipse(50, 8, 62, 44, 0, 0, Math.PI * 2);
+  g.ellipse(50, 8, 62, 44, 0, 0, TAU);
   g.fill();
 
   // Depth at the foot.
@@ -75,12 +87,27 @@ function tile(name, [top, bottom], draw, { sparkles = false, dark = false } = {}
   g.strokeStyle = "#FFFFFF";
   g.lineCap = "round";
   g.lineJoin = "round";
-  draw(g);
+  draw(g, t);
   g.restore();
 
   if (sparkles) {
-    sparkle(g, 80, 18, 7);
-    sparkle(g, 88, 32, 3.5);
+    sparkle(g, 80, 18, 7 * (sparkles === "live" ? twinkle(t, 0) : 1));
+    sparkle(g, 88, 32, 3.5 * (sparkles === "live" ? twinkle(t, 0.5) : 1));
+  }
+
+  // A band of light crossing the tile once per loop (first half, then rest).
+  if (sweep) {
+    const x = -70 + 240 * Math.min(1, t * 2);
+    g.save();
+    g.translate(x, 50);
+    g.rotate(0.35);
+    const band = g.createLinearGradient(-18, 0, 18, 0);
+    band.addColorStop(0, "rgba(255,255,255,0)");
+    band.addColorStop(0.5, "rgba(255,255,255,0.45)");
+    band.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = band;
+    g.fillRect(-18, -90, 36, 180);
+    g.restore();
   }
 
   // Thin light rim.
@@ -89,8 +116,45 @@ function tile(name, [top, bottom], draw, { sparkles = false, dark = false } = {}
   g.beginPath();
   g.roundRect(3, 3, 94, 94, R - 1);
   g.stroke();
+}
 
-  fs.writeFileSync(path.join(OUT, `${name}.png`), c.toBuffer("image/png"));
+function writeVideo(name, render) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `emoji-${name}-`));
+  try {
+    for (let i = 0; i < FRAMES; i++) {
+      fs.writeFileSync(path.join(dir, `f${String(i).padStart(3, "0")}.png`), render(i / FRAMES).toBuffer("image/png"));
+    }
+    const out = path.join(OUT, `${name}.webm`);
+    // Lower quality step by step until it fits Telegram's size cap.
+    for (const crf of [30, 36, 42, 48]) {
+      execFileSync(FFMPEG, [
+        "-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(dir, "f%03d.png"),
+        "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", String(crf), "-an", out,
+      ]);
+      if (fs.statSync(out).size <= MAX_WEBM_BYTES) return;
+    }
+    throw new Error(`${name}.webm is still over ${MAX_WEBM_BYTES} bytes`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Writes `name`.png (the still, at t = `still`, default 0) and, with `animate`, `name`.webm.
+ * An animated tile sweeps a band of light and twinkles its sparkles unless
+ * told otherwise; `draw(g, t)` adds its own motion.
+ */
+function tile(name, colors, draw, opts = {}) {
+  const o = opts.animate ? { sweep: true, ...opts, sparkles: opts.sparkles ? "live" : false } : opts;
+  const render = (t) => {
+    const c = createCanvas(S, S);
+    paint(c.getContext("2d"), colors, draw, o, t);
+    return c;
+  };
+  fs.writeFileSync(path.join(OUT, `${name}.png`), render(opts.still ?? 0).toBuffer("image/png"));
+  const video = path.join(OUT, `${name}.webm`);
+  if (opts.animate) writeVideo(name, render);
+  else if (fs.existsSync(video)) fs.rmSync(video);
 }
 
 const person = (g, x, y, s) => {
@@ -115,10 +179,14 @@ tile("m_free", ["#4ADE80", "#15803D"], (g) => {
   g.bezierCurveTo(62, 30, 84, 32, 84, 50);
   g.bezierCurveTo(84, 68, 62, 70, 50, 50);
   g.stroke();
-}, { sparkles: true });
+}, { sparkles: true, animate: true });
 
-tile("m_pro", ["#38BDF8", "#1D6FD1"], (g) => {
-  // paper plane
+tile("m_pro", ["#38BDF8", "#1D6FD1"], (g, t) => {
+  // paper plane, gently gliding
+  g.translate(0, 3.5 * Math.sin(TAU * t));
+  g.translate(50, 50);
+  g.rotate(0.05 * Math.sin(TAU * t));
+  g.translate(-50, -50);
   g.beginPath();
   g.moveTo(18, 48);
   g.lineTo(80, 22);
@@ -133,9 +201,7 @@ tile("m_pro", ["#38BDF8", "#1D6FD1"], (g) => {
   g.lineTo(42, 74);
   g.closePath();
   g.fill();
-}, { sparkles: true });
-
-tile("m_account", ["#60A5FA", "#1E40AF"], (g) => person(g, 50, 46, 1.25));
+}, { sparkles: true, animate: true });
 
 tile("m_buy", ["#67E8F9", "#0E7490"], (g) => {
   g.beginPath();
@@ -157,7 +223,7 @@ tile("m_buy", ["#67E8F9", "#0E7490"], (g) => {
   g.lineTo(68, 44);
   g.lineTo(62, 28);
   g.stroke();
-}, { sparkles: true });
+}, { sparkles: true, animate: true });
 
 tile("m_history", ["#A5B4FC", "#4338CA"], (g) => {
   g.lineWidth = 8;
@@ -202,11 +268,6 @@ tile("m_language", ["#5EEAD4", "#0F766E"], (g) => {
   g.stroke();
 });
 
-tile("m_help", ["#FDA4AF", "#BE123C"], (g) => {
-  g.font = "800 66px Inter";
-  g.textAlign = "center";
-  g.fillText("?", 50, 74);
-});
 
 tile("m_desktop", ["#CBD5E1", "#475569"], (g) => {
   g.beginPath();
@@ -222,66 +283,8 @@ tile("m_desktop", ["#CBD5E1", "#475569"], (g) => {
 });
 
 // ------------------------------------------------------------ KH Invoice
-tile("inv_create", ["#60A5FA", "#1B5FA8"], (g) => {
-  g.beginPath();
-  g.moveTo(24, 16);
-  g.lineTo(64, 16);
-  g.lineTo(64, 80);
-  for (let i = 0; i < 5; i++) {
-    g.lineTo(60 - i * 8, 74);
-    g.lineTo(56 - i * 8, 80);
-  }
-  g.lineTo(24, 80);
-  g.closePath();
-  g.fill();
-  g.shadowColor = "transparent";
-  g.strokeStyle = "#1B5FA8";
-  g.lineWidth = 5;
-  for (const y of [31, 43, 55]) {
-    g.beginPath();
-    g.moveTo(32, y);
-    g.lineTo(56, y);
-    g.stroke();
-  }
-  g.fillStyle = "#22C55E";
-  g.beginPath();
-  g.arc(71, 71, 16, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = "#FFFFFF";
-  g.lineWidth = 5;
-  g.beginPath();
-  g.moveTo(71, 62);
-  g.lineTo(71, 80);
-  g.moveTo(62, 71);
-  g.lineTo(80, 71);
-  g.stroke();
-});
 
-tile("inv_in", ["#4ADE80", "#138A5B"], (g) => {
-  g.lineWidth = 12;
-  g.beginPath();
-  g.moveTo(50, 78);
-  g.lineTo(50, 28);
-  g.stroke();
-  g.beginPath();
-  g.moveTo(28, 47);
-  g.lineTo(50, 24);
-  g.lineTo(72, 47);
-  g.stroke();
-});
 
-tile("inv_out", ["#FB923C", "#C9361F"], (g) => {
-  g.lineWidth = 12;
-  g.beginPath();
-  g.moveTo(50, 22);
-  g.lineTo(50, 72);
-  g.stroke();
-  g.beginPath();
-  g.moveTo(28, 53);
-  g.lineTo(50, 76);
-  g.lineTo(72, 53);
-  g.stroke();
-});
 
 tile("inv_report", ["#60A5FA", "#0C447C"], (g) => {
   for (const [x, top] of [[24, 56], [42, 38], [60, 48], [78, 26]]) {
@@ -375,7 +378,7 @@ tile("inv_pro", ["#FDE68A", "#D18A12"], (g) => {
     g.arc(x, 62, 4, 0, Math.PI * 2);
     g.fill();
   }
-}, { sparkles: true });
+}, { sparkles: true, animate: true });
 
 tile("inv_summary", ["#A78BFA", "#4F3BC4"], (g) => {
   g.beginPath();
@@ -507,11 +510,11 @@ tile("tiktok", ["#2A2A2A", "#000000"], (g) => {
 const INK = "#2F3441";
 const WHITE_TILE = ["#FFFFFF", "#E3E9F1"];
 
-function gear(g, cx, cy, rOuter, rBody, teeth, fillL, fillR, hole) {
+function gear(g, cx, cy, rOuter, rBody, teeth, fillL, fillR, hole, rot = 0) {
   g.save();
   g.beginPath();
   for (let i = 0; i < teeth; i++) {
-    const a = (i / teeth) * Math.PI * 2;
+    const a = (i / teeth) * Math.PI * 2 + rot;
     const w = (Math.PI * 2) / teeth / 4;
     g.lineTo(cx + Math.cos(a - w * 1.4) * rBody, cy + Math.sin(a - w * 1.4) * rBody);
     g.lineTo(cx + Math.cos(a - w) * rOuter, cy + Math.sin(a - w) * rOuter);
@@ -536,7 +539,7 @@ function gear(g, cx, cy, rOuter, rBody, teeth, fillL, fillR, hole) {
 }
 
 // Account: business person with a gear for a head.
-tile("m_account", WHITE_TILE, (g) => {
+tile("m_account", WHITE_TILE, (g, t) => {
   g.shadowColor = "transparent";
   g.strokeStyle = INK;
   g.lineWidth = 3;
@@ -580,11 +583,11 @@ tile("m_account", WHITE_TILE, (g) => {
   g.lineTo(56, 96);
   g.stroke();
   // gear head
-  gear(g, 50, 34, 25, 18, 8, "#FCD34D", "#F59E0B", INK);
-});
+  gear(g, 50, 34, 25, 18, 8, "#FCD34D", "#F59E0B", INK, (t * TAU) / 8);
+}, { animate: true, sweep: false });
 
 // Help: support agent with a headset, a gear and a wrench beside.
-tile("m_help", WHITE_TILE, (g) => {
+tile("m_help", WHITE_TILE, (g, t) => {
   g.shadowColor = "transparent";
   const LINE = "#2B7FD4";
   const FILL = "#CFE5FB";
@@ -592,7 +595,7 @@ tile("m_help", WHITE_TILE, (g) => {
   g.fillStyle = FILL;
   g.lineWidth = 3.5;
   // gear + wrench (behind)
-  gear(g, 72, 64, 17, 12, 8, FILL, FILL, "#FFFFFF");
+  gear(g, 72, 64, 17, 12, 8, FILL, FILL, "#FFFFFF", -(t * TAU) / 8);
   g.strokeStyle = LINE;
   g.fillStyle = FILL;
   // wrench: handle, then a round head with an open jaw
@@ -666,14 +669,19 @@ tile("m_help", WHITE_TILE, (g) => {
   g.moveTo(57, 52);
   g.quadraticCurveTo(56, 60, 44, 58);
   g.stroke();
-});
+}, { animate: true, sweep: false });
 
-// Income: an open hand receiving a coin.
-tile("inv_in", WHITE_TILE, (g) => {
+// Income: an open hand receiving a coin (it drops in, settles, fades, again).
+tile("inv_in", WHITE_TILE, (g, t) => {
   g.shadowColor = "transparent";
   g.strokeStyle = INK;
   g.lineWidth = 3.5;
   // coin
+  const fall = Math.min(1, t / 0.4);
+  const bounce = fall < 1 ? 1 - (1 - fall) ** 2 : 1 + 0.06 * Math.sin(TAU * Math.min(1, (t - 0.4) / 0.2)) * (t < 0.6 ? 1 : 0);
+  g.save();
+  g.globalAlpha = t > 0.85 ? 1 - (t - 0.85) / 0.15 : Math.min(1, t / 0.12 + 0.2);
+  g.translate(0, -18 * (1 - bounce));
   g.fillStyle = "#FCD776";
   g.beginPath();
   g.arc(58, 27, 17, 0, Math.PI * 2);
@@ -683,6 +691,7 @@ tile("inv_in", WHITE_TILE, (g) => {
   g.font = "800 22px Inter";
   g.textAlign = "center";
   g.fillText("$", 58, 35);
+  g.restore();
   // hand
   g.fillStyle = "#F9C4AE";
   g.beginPath();
@@ -707,10 +716,10 @@ tile("inv_in", WHITE_TILE, (g) => {
   g.fill();
   g.stroke();
   g.restore();
-});
+}, { animate: true, sweep: false, still: 0.6 });
 
 // Expense: one hand handing a banknote over to another.
-tile("inv_out", WHITE_TILE, (g) => {
+tile("inv_out", WHITE_TILE, (g, t) => {
   g.shadowColor = "transparent";
   const HAND = "#3B9AD9";
   // lower, receiving hand
@@ -723,10 +732,11 @@ tile("inv_out", WHITE_TILE, (g) => {
   g.closePath();
   g.fill();
   g.fillRect(12, 70, 14, 16);
-  // banknote
+  // banknote, passing from the upper hand down to the lower one
+  const pass = 0.5 - 0.5 * Math.cos(TAU * t);
   g.save();
-  g.translate(56, 38);
-  g.rotate(-0.45);
+  g.translate(50 + 10 * pass, 34 + 18 * pass);
+  g.rotate(-0.45 + 0.3 * pass);
   g.fillStyle = "#4ADE80";
   g.strokeStyle = "#15803D";
   g.lineWidth = 2.5;
@@ -748,10 +758,10 @@ tile("inv_out", WHITE_TILE, (g) => {
   g.closePath();
   g.fill();
   g.fillRect(6, 28, 12, 20);
-});
+}, { animate: true, sweep: false });
 
-// Create invoice: a bill with a checklist, a dollar sign and a pen.
-tile("inv_create", WHITE_TILE, (g) => {
+// Create invoice: a bill with a checklist, a dollar sign and a pen that writes.
+tile("inv_create", WHITE_TILE, (g, t) => {
   g.shadowColor = "transparent";
   const TEAL = "#16706A";
   g.strokeStyle = TEAL;
@@ -790,7 +800,7 @@ tile("inv_create", WHITE_TILE, (g) => {
   g.fillText("$", 47, 81);
   // pen
   g.save();
-  g.translate(74, 58);
+  g.translate(74 + 3 * Math.sin(TAU * t * 3), 58 + 2 * Math.cos(TAU * t * 3));
   g.rotate(0.55);
   g.fillStyle = "#86EFAC";
   g.lineWidth = 3;
@@ -807,7 +817,143 @@ tile("inv_create", WHITE_TILE, (g) => {
   g.fill();
   g.stroke();
   g.restore();
-});
+}, { animate: true, sweep: false });
+
+// ------------------------------------------------------------ brand
+const easeOutBounce = (x) => {
+  const n = 7.5625, d = 2.75;
+  if (x < 1 / d) return n * x * x;
+  if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
+  if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
+  return n * (x -= 2.625 / d) * x + 0.984375;
+};
+
+/** The SaveIt KH mark: a download arrow that drops into a gold tray. */
+function drawLogo(g, t) {
+  let drop = 0;
+  if (t < 0.45) drop = -18 * (1 - easeOutBounce(t / 0.45));
+  else if (t > 0.8) drop = -18 * ((t - 0.8) / 0.2) ** 2;
+  const landed = t >= 0.45 && t < 0.62 ? 1 - (t - 0.45) / 0.17 : 0;
+
+  g.save();
+  g.globalAlpha = t > 0.92 ? 1 - (t - 0.92) / 0.08 : t < 0.06 ? t / 0.06 : 1;
+  g.translate(0, drop);
+  const blue = g.createLinearGradient(0, 16, 0, 66);
+  blue.addColorStop(0, "#7CC8FF");
+  blue.addColorStop(1, "#2F80ED");
+  g.fillStyle = blue;
+  g.strokeStyle = blue;
+  g.beginPath();
+  g.roundRect(43, 16, 14, 30, 5);
+  g.fill();
+  g.lineWidth = 13;
+  g.beginPath();
+  g.moveTo(26, 40);
+  g.lineTo(50, 62);
+  g.lineTo(74, 40);
+  g.stroke();
+  g.restore();
+
+  // tray, flashing as the arrow lands
+  g.save();
+  g.shadowColor = `rgba(255,210,90,${0.35 + 0.65 * landed})`;
+  g.shadowBlur = 6 + 10 * landed;
+  const gold = g.createLinearGradient(0, 74, 0, 84);
+  gold.addColorStop(0, "#FFE08A");
+  gold.addColorStop(1, "#F2A51A");
+  g.fillStyle = gold;
+  g.beginPath();
+  g.roundRect(24, 74, 52, 9, 4.5);
+  g.fill();
+  g.restore();
+}
+
+tile("logo", ["#173A80", "#081A40"], drawLogo, { animate: true, sparkles: true, sweep: false, still: 0.6 });
+
+// The brand badge: "SaveIt" over a gold "KH".
+tile("brand", ["#2346A8", "#0B1638"], (g) => {
+  g.textAlign = "center";
+  g.font = "800 25px Inter";
+  g.fillText("SaveIt", 50, 45);
+  const gold = g.createLinearGradient(0, 52, 0, 84);
+  gold.addColorStop(0, "#FFE58F");
+  gold.addColorStop(1, "#F29F05");
+  g.fillStyle = gold;
+  g.font = "800 36px Inter";
+  g.fillText("KH", 50, 82);
+}, { animate: true, sparkles: true });
+
+// ADMIN: a white shield with a gold crown and a ribbon.
+tile("admin", ["#FCD34D", "#B45309"], (g) => {
+  g.beginPath();
+  g.moveTo(50, 12);
+  g.lineTo(80, 22);
+  g.lineTo(78, 50);
+  g.quadraticCurveTo(74, 74, 50, 86);
+  g.quadraticCurveTo(26, 74, 22, 50);
+  g.lineTo(20, 22);
+  g.closePath();
+  g.fill();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#F59E0B";
+  g.beginPath();
+  g.moveTo(32, 50);
+  g.lineTo(34, 30);
+  g.lineTo(42, 40);
+  g.lineTo(50, 26);
+  g.lineTo(58, 40);
+  g.lineTo(66, 30);
+  g.lineTo(68, 50);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#B91C1C";
+  g.beginPath();
+  g.roundRect(12, 56, 76, 18, 5);
+  g.fill();
+  g.fillStyle = "#FFFFFF";
+  g.font = "800 14px Inter";
+  g.textAlign = "center";
+  g.fillText("ADMIN", 50, 70);
+}, { animate: true, sparkles: true });
+
+// ------------------------------------------------------------ profile video
+// The logo full-bleed at 640x640 as an MP4 loop, for an animated profile
+// photo (Telegram Premium). Written to assets/profile.
+{
+  const dir = path.join(ROOT, "assets", "profile");
+  fs.mkdirSync(dir, { recursive: true });
+  const SIZE = 640;
+  const frame = (t) => {
+    const c = createCanvas(SIZE, SIZE);
+    const g = c.getContext("2d");
+    const bg = g.createRadialGradient(SIZE / 2, SIZE * 0.35, 40, SIZE / 2, SIZE / 2, SIZE * 0.75);
+    bg.addColorStop(0, "#1E4BA8");
+    bg.addColorStop(1, "#06122E");
+    g.fillStyle = bg;
+    g.fillRect(0, 0, SIZE, SIZE);
+    g.scale(SIZE / 130, SIZE / 130);
+    g.translate(15, 12);
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    drawLogo(g, t);
+    for (const [x, y, r, ph] of [[88, 14, 5, 0], [96, 26, 2.5, 0.5], [8, 30, 3, 0.25]]) sparkle(g, x, y, r * twinkle(t, ph));
+    return c;
+  };
+  fs.writeFileSync(path.join(dir, "saveit-logo.png"), frame(0.6).toBuffer("image/png"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "profile-"));
+  try {
+    for (let i = 0; i < FRAMES; i++) {
+      fs.writeFileSync(path.join(tmp, `f${String(i).padStart(3, "0")}.png`), frame(i / FRAMES).toBuffer("image/png"));
+    }
+    execFileSync(FFMPEG, [
+      "-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(tmp, "f%03d.png"),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", "-an",
+      path.join(dir, "saveit-logo.mp4"),
+    ]);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {

@@ -1047,6 +1047,13 @@ async function registerBotWebhook() {
   } catch (err) {
     console.error("Could not set the Telegram bot webhook:", err?.message ?? err);
   }
+  // The button beside the message box: always in view, and a Mini App opened
+  // from it receives the signed initData (a reply-keyboard one does not).
+  const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
+  if (appUrl) {
+    const menu = await botApi("setChatMenuButton", { menu_button: { type: "web_app", text: "Open App", web_app: { url: appUrl } } }).catch(() => null);
+    if (menu?.ok) console.log(`Chat menu button opens ${appUrl}`);
+  }
 }
 
 const server = app.listen(config.port, () => {

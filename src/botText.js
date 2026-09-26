@@ -75,17 +75,17 @@ export function mainKeyboard(language) {
     const item = MENU.find((m) => m.action === action);
     return { text: item[language] ?? item.en, emoji: item.emoji };
   };
-  const rows = [
+  const rows = [];
+  // Open App first, where it is seen -- it is also the chat's menu button.
+  if (config.webAppUrl) rows.push([{ ...button("app"), web_app: { url: config.webAppUrl } }]);
+  rows.push(
     [button("free")],
     [button("premium")],
     ...(config.khInvoiceBridgeSecret ? [[button("invoice")]] : []),
     [button("account"), button("buy")],
     [button("history"), button("referral")],
     [button("language"), button("help")],
-  ];
-  if (config.webAppUrl) {
-    rows.push([{ ...button("app"), web_app: { url: config.webAppUrl } }]);
-  }
+  );
   return { keyboard: rows, resize_keyboard: true, is_persistent: true };
 }
 
@@ -101,7 +101,7 @@ export function languageKeyboard() {
 const TEXT = {
   km: {
     welcome: (name) =>
-      `👋 សួស្តី ${name}! នេះជា SaveIt KH\n\n` +
+      `{:logo:} សួស្តី ${name}! នេះជា {:brand:} SaveIt KH\n\n` +
       `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n\n` +
       `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់ ♾\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
@@ -200,7 +200,7 @@ const TEXT = {
   },
   en: {
     welcome: (name) =>
-      `👋 Hi ${name}! This is SaveIt KH\n\n` +
+      `{:logo:} Hi ${name}! This is {:brand:} SaveIt KH\n\n` +
       `I download videos and songs:\n\n` +
       `{:m_free:} SaveIt Free — free & unlimited ♾\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +

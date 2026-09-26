@@ -34,6 +34,10 @@ export const EMOJI = {
   bakong: ["bakong", "🏦"],
   bankc: ["bank_c", "🏦"],
   khqr: ["khqr", "💳"],
+  // brand
+  logo: ["logo", "⬇️"],
+  brand: ["brand", "💎"],
+  admin: ["admin", "🛡"],
   // main menu
   m_free: ["m_free", "🆓"],
   m_pro: ["m_pro", "👑"],
@@ -182,9 +186,12 @@ export async function buildPack(ownerId) {
   const stickers = [];
   for (const [i, token] of tokens.entries()) {
     const [file, fallback] = EMOJI[token];
-    const bytes = await fs.readFile(path.join(DIR, `${file}.png`));
-    form.set(`s${i}`, new Blob([bytes], { type: "image/png" }), `${file}.png`);
-    stickers.push({ sticker: `attach://s${i}`, format: "static", emoji_list: [fallback], keywords: [token, file] });
+    // A moving version (.webm, VP9) wins over the still one when there is one.
+    const video = await fs.readFile(path.join(DIR, `${file}.webm`)).catch(() => null);
+    const bytes = video ?? (await fs.readFile(path.join(DIR, `${file}.png`)));
+    const ext = video ? "webm" : "png";
+    form.set(`s${i}`, new Blob([bytes], { type: video ? "video/webm" : "image/png" }), `${file}.${ext}`);
+    stickers.push({ sticker: `attach://s${i}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] });
   }
   form.set("stickers", JSON.stringify(stickers));
   const created = await botApiForm("createNewStickerSet", form);
@@ -201,7 +208,8 @@ export async function buildPack(ownerId) {
   return (
     `✅ Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.\n` +
     `https://t.me/addemoji/${name}\n\n` +
-    `Test: {:yt:} {:fb:} {:ig:} {:tt:} {:x:} · {:aba:} {:wing:} {:truemoney:} {:bakong:} {:khqr:}\n\n` +
+    `Test: {:logo:} {:brand:} {:admin:} · {:m_free:} {:m_pro:} {:m_buy:} {:m_account:} {:m_help:} · {:inv_in:} {:inv_out:} {:inv_create:}\n` +
+    `{:yt:} {:fb:} {:ig:} {:tt:} {:x:} · {:aba:} {:wing:} {:truemoney:} {:bakong:} {:khqr:}\n\n` +
     `If these show as normal emoji, the bot's owner account (the one that created it in @BotFather) needs Telegram Premium.`
   );
 }

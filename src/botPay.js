@@ -342,7 +342,7 @@ export async function handlePhoto(message, user) {
       chat_id: config.telegramAdminChatId,
       photo: photo.file_id,
       caption:
-        `💳 Payment screenshot\n` +
+        `{:admin:} Payment screenshot\n` +
         `From: ${who} (${user.telegram_user_id})\n` +
         `Package: ${order.package?.title_en ?? order.package_id} — $${Number(order.amount_usd).toFixed(2)}\n` +
         `Ticket: ${order.ticket}`,
@@ -411,7 +411,7 @@ async function qrStatus(chatId) {
   await call("sendMessage", {
     chat_id: chatId,
     text:
-      `🏦 Payment QRs\n\n` +
+      `{:admin:} Payment QRs\n\n` +
       `1️⃣ ${extra.primary_label}: ${describe(settings?.khqr_template)} (name kept as the bank wrote it)\n` +
       `2️⃣ ${extra.alt_label}: ${describe(extra.alt_template)}${extra.alt_template && extra.rename_alt ? " (shows the service name)" : ""}\n\n` +
       `/setqr — photo or text, bank 1\n/setqr2 — photo or text, bank 2\n/setqr2 off — remove bank 2`,

@@ -334,7 +334,7 @@ async function handleAdminCommand(chatId, text) {
     const recent = (list) => list.filter((r) => new Date(r.created_at).getTime() >= since).length;
     await send(
       chatId,
-      `📊 Bot stats\n\n` +
+      `{:admin:} Bot stats\n\n` +
         `Users: ${users.length} (+${recent(users)} this week)\n` +
         `Link downloads: ${jobs.length} (+${recent(jobs)} this week)`
     );
