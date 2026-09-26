@@ -18,6 +18,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { actionForLabel, languageKeyboard, mainKeyboard, texts } from "./botText.js";
 import * as botJobs from "./botJobs.js";
+import * as botPay from "./botPay.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
@@ -145,12 +146,17 @@ async function incrementUsage(telegramUserId, existing) {
   }
 }
 
-/** Free allowance, what's been spent of it, and what's left. */
+/**
+ * What this person may still download. Free allowance + referral bonus +
+ * whatever they bought all pool into one number; a running VIP period
+ * means no limit at all (left is Infinity, and nothing is counted down).
+ */
 async function quotaFor(user) {
   const usage = await usageFor(user.telegram_user_id);
-  const total = config.botFreeDownloads + (user.bonus_downloads ?? 0);
   const used = usage?.free_used ?? 0;
-  return { usage, total, used, left: Math.max(total - used, 0) };
+  const total = config.botFreeDownloads + (user.bonus_downloads ?? 0) + (user.paid_downloads ?? 0);
+  if (botPay.isPremium(user)) return { usage, total, used, left: Infinity, premium: true };
+  return { usage, total, used, left: Math.max(total - used, 0), premium: false };
 }
 
 // ------------------------------------------------------------ menu screens
@@ -164,8 +170,9 @@ async function showAccount(chatId, user) {
     `├ ${t.fieldId}: \`${user.telegram_user_id}\``,
     `├ ${t.fieldUsername}: ${user.username ? "@" + user.username : "—"}`,
     `├ ${t.fieldLanguage}: ${user.language === "en" ? "English" : "ភាសាខ្មែរ"}`,
+    `├ ${t.fieldPlan}: ${quota.premium ? t.planVip(new Date(user.premium_until).toISOString().slice(0, 10)) : t.planFree}`,
     `├ ${t.fieldUsed}: *${quota.used}*`,
-    `└ ${t.fieldQuota}: *${quota.left}* / ${quota.total}`,
+    `└ ${t.fieldQuota}: *${quota.premium ? t.unlimited : `${quota.left} / ${quota.total}`}*`,
   ];
   await send(chatId, lines.join("\n"), { parse_mode: "Markdown" });
 }
@@ -219,6 +226,11 @@ export async function handleMessage(message) {
   const user = await ensureUser(from, startPayload);
   const t = texts(user.language);
 
+  // A photo is a payment screenshot, or -- from the operator, captioned
+  // /setqr -- the bank QR orders are built from. Checked before the text
+  // handling below, since a photo usually has no text at all.
+  if (message.photo && (await botPay.handlePhoto(message, user))) return;
+
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
     await send(chatId, t.welcome(name), { parse_mode: "Markdown", reply_markup: mainKeyboard(user.language) });
@@ -226,6 +238,7 @@ export async function handleMessage(message) {
   }
 
   if (await handleAdminCommand(chatId, text)) return;
+  if (await botPay.handleAdminPayCommand(chatId, text)) return;
 
   switch (actionForLabel(text) ?? commandAction(text)) {
     case "account":
@@ -240,6 +253,10 @@ export async function handleMessage(message) {
       return send(chatId, t.help, { parse_mode: "Markdown" });
     case "download":
       return send(chatId, t.sendLink);
+    case "buy": {
+      const quota = await quotaFor(user);
+      return botPay.showPackages(chatId, user, quota.left);
+    }
     case "app":
       return send(chatId, config.webAppUrl ? t.openApp(config.webAppUrl) : t.openAppMissing);
     default:
@@ -269,7 +286,7 @@ export async function handleMessage(message) {
 
   try {
     await botJobs.createUrlJob({ telegramUserId: user.telegram_user_id, chatId, url, audioOnly });
-    await incrementUsage(user.telegram_user_id, quota.usage);
+    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
     await send(chatId, t.queued);
   } catch (err) {
     console.error("Bot URL job failed:", err?.message ?? err);
@@ -326,6 +343,7 @@ function commandAction(text) {
     case "/referral": return "referral";
     case "/language": return "language";
     case "/app": return "app";
+    case "/buy": return "buy";
     default: return null;
   }
 }
@@ -338,7 +356,12 @@ export async function handleCallback(cq) {
   const [, kind, value] = data.split(":");
   const chatId = cq.message?.chat?.id;
   const userId = cq.from?.id;
-  if (kind !== "lang" || !chatId || !userId) return false;
+  if (!chatId || !userId) return false;
+
+  if (kind !== "lang") {
+    const user = await ensureUser(cq.from, null);
+    return botPay.handlePayCallback(cq, user);
+  }
 
   const language = value === "en" ? "en" : "km";
   await db()
@@ -399,7 +422,7 @@ async function sendTelegramPost(chatId, user, url, quota) {
     }
 
     await sendFile(chatId, info.mediaType === "audio" ? "sendAudio" : "sendVideo", localPath);
-    await incrementUsage(user.telegram_user_id, quota.usage);
+    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
   } catch (err) {
     console.error("Bot link download failed:", err?.message ?? err);
     await send(chatId, t.failed(String(err?.message ?? err).slice(0, 200)));

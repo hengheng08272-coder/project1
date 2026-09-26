@@ -16,6 +16,7 @@ export const LANGUAGES = ["km", "en"];
 const MENU = [
   { action: "account", km: "👤 គណនី", en: "👤 Account" },
   { action: "download", km: "📥 ទាញយកតំណ", en: "📥 Download" },
+  { action: "buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
   { action: "history", km: "📜 ប្រវត្តិ", en: "📜 History" },
   { action: "referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
   { action: "language", km: "🌐 ភាសា", en: "🌐 Language" },
@@ -47,6 +48,7 @@ export function mainKeyboard(language) {
   };
   const rows = [
     [{ text: label("account") }, { text: label("download") }],
+    [{ text: label("buy") }],
     [{ text: label("history") }, { text: label("referral") }],
     [{ text: label("language") }, { text: label("help") }],
   ];
@@ -86,6 +88,9 @@ const TEXT = {
     fieldUsername: "Username",
     fieldLanguage: "ភាសា",
     fieldQuota: "ទាញយកនៅសល់",
+    fieldPlan: "គម្រោង",
+    planFree: "ឥតគិតថ្លៃ",
+    planVip: (until) => `👑 VIP ដល់ ${until}`,
     fieldUsed: "បានទាញយក",
     unlimited: "មិនកំណត់",
     historyTitle: "📜 ប្រវត្តិទាញយក",
@@ -105,7 +110,7 @@ const TEXT = {
     notALink: "នោះមិនមែនជាតំណទេ។ សូមផ្ញើតំណដែលចាប់ផ្ដើមដោយ http:// ឬ https://។",
     working: "⏳ កំពុងដំណើរការ… ខ្ញុំនឹងផ្ញើមកវិញពេលរួច។",
     queued: "✅ បានបញ្ចូលក្នុងជួរ។ ខ្ញុំនឹងផ្ញើមកវិញពេលទាញយករួច (អាចចំណាយពេលពីរបីនាទីសម្រាប់វីដេអូវែង)។",
-    quotaOver: (total) => `អ្នកបានប្រើអស់ការទាញយកឥតគិតថ្លៃ ${total} ដងហើយ។ ណែនាំមិត្តដើម្បីទទួលបន្ថែម ឬទាក់ទងអ្នកគ្រប់គ្រង។`,
+    quotaOver: (total) => `អ្នកបានប្រើអស់ ${total} ដងហើយ។ ចុច 💎 ទិញ ដើម្បីបន្ថែម ឬណែនាំមិត្តដើម្បីទទួលឥតគិតថ្លៃ។`,
     doneWithLink: (name, url) => `✅ រួចរាល់៖ ${name}\n\n🔗 ${url}`,
     doneNoLink: (name) => `✅ រួចរាល់៖ ${name}`,
     failed: (reason) => `❌ ទាញយកមិនបាន៖ ${reason}`,
@@ -132,6 +137,9 @@ const TEXT = {
     fieldUsername: "Username",
     fieldLanguage: "Language",
     fieldQuota: "Downloads left",
+    fieldPlan: "Plan",
+    planFree: "Free",
+    planVip: (until) => `👑 VIP until ${until}`,
     fieldUsed: "Downloaded",
     unlimited: "unlimited",
     historyTitle: "📜 Download history",
@@ -151,7 +159,7 @@ const TEXT = {
     notALink: "That isn't a link. Send something starting with http:// or https://.",
     working: "⏳ Working on it… I'll send it back when it's ready.",
     queued: "✅ Queued. I'll send it back once it's downloaded (a long video can take a few minutes).",
-    quotaOver: (total) => `You've used all ${total} free downloads. Refer a friend for more, or contact the operator.`,
+    quotaOver: (total) => `You've used all ${total} downloads. Tap 💎 Buy for more, or refer a friend for free ones.`,
     doneWithLink: (name, url) => `✅ Done: ${name}\n\n🔗 ${url}`,
     doneNoLink: (name) => `✅ Done: ${name}`,
     failed: (reason) => `❌ Download failed: ${reason}`,

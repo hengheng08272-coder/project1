@@ -2,6 +2,7 @@
 import { db, rows } from "./db.js";
 import { config } from "./config.js";
 import * as botJobs from "./botJobs.js";
+import * as botPay from "./botPay.js";
 import { applyAutoRules, processQueue } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
@@ -24,6 +25,10 @@ export async function loop() {
       // gets sent back to whoever asked for it in Telegram.
       const botReplies = await botJobs.notifyFinishedJobs();
       if (botReplies) console.log(`Sent ${botReplies} finished download(s) back to the bot`);
+
+      // Bot purchases: ask Bakong about open orders, lapse stale ones.
+      const paid = await botPay.checkPendingOrders();
+      if (paid) console.log(`Bakong confirmed ${paid} bot order(s)`);
 
       if (await isAuthorized()) await onePass();
     } catch (err) {
