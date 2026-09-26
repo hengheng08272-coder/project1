@@ -27,6 +27,8 @@ COPY src ./src
 # src/ used to be copied, so the logo never reached the container and every
 # tap on "Buy" crashed on a missing file.
 COPY assets ./assets
+# The KH Invoice web app, served at /invoice/ as the bot's Mini App.
+COPY webapps ./webapps
 
 EXPOSE 8000
 CMD ["node", "src/server.js"]

@@ -26,10 +26,13 @@ export const INVOICE_PACKAGE_PREFIX = "inv_";
 // Prices must match the edge function's PLANS -- it is the one that decides
 // how many months a plan adds; these rows only set what the QR charges.
 const PACKAGES = [
-  { id: "inv_1m", plan: "1m", title_km: "🧾 KH Invoice Pro ១ ខែ", title_en: "🧾 KH Invoice Pro 1 month", price_usd: 2, days: 30, sort: 101 },
-  { id: "inv_6m", plan: "6m", title_km: "🧾 KH Invoice Pro ៦ ខែ", title_en: "🧾 KH Invoice Pro 6 months", price_usd: 7, days: 180, sort: 102 },
-  { id: "inv_1y", plan: "1y", title_km: "🧾 KH Invoice Pro ១ ឆ្នាំ ⭐", title_en: "🧾 KH Invoice Pro 1 year ⭐", price_usd: 14, days: 365, sort: 103 },
+  { id: "inv_1m", plan: "1m", title_km: "🧾 KH Invoice Pro ១ ខែ", title_en: "🧾 KH Invoice Pro 1 month", price_usd: 3, days: 30, sort: 101 },
+  { id: "inv_2m", plan: "2m", title_km: "🧾 KH Invoice Pro ២ ខែ", title_en: "🧾 KH Invoice Pro 2 months", price_usd: 5, days: 60, sort: 102 },
+  { id: "inv_3m", plan: "3m", title_km: "🧾 KH Invoice Pro ៣ ខែ", title_en: "🧾 KH Invoice Pro 3 months", price_usd: 7, days: 90, sort: 103 },
+  { id: "inv_1y", plan: "1y", title_km: "🧾 KH Invoice Pro ១២ ខែ ⭐", title_en: "🧾 KH Invoice Pro 12 months ⭐", price_usd: 25, days: 365, sort: 104 },
 ];
+// Plans that were sold before and must no longer be offered.
+const RETIRED_PACKAGES = ["inv_6m"];
 
 export const isInvoicePackage = (id) => String(id ?? "").startsWith(INVOICE_PACKAGE_PREFIX);
 export const enabled = () => Boolean(config.khInvoiceBridgeUrl && config.khInvoiceBridgeSecret);
@@ -108,6 +111,7 @@ export async function announce() {
       PACKAGES.map(({ plan: _plan, ...row }) => ({ ...row, downloads: null, active: true })),
       { onConflict: "id" }
     );
+    await db().from("bot_packages").update({ active: false }).in("id", RETIRED_PACKAGES);
     const me = await call("getMe", {});
     const username = me?.result?.username;
     if (username) await bridge("hello", { bot_username: username });
@@ -138,9 +142,9 @@ const L = {
       "✅ ស្តុកទំនិញ + ជូនដំណឹងពេលជិតអស់\n" +
       "✅ បំណុលអតិថិជន និង អ្នកផ្គត់ផ្គង់\n" +
       "✅ របាយការណ៍ចំណេញ ប្រចាំថ្ងៃ/ខែ\n\n" +
-      "🎁 សាកល្បងឥតគិតថ្លៃ ៣០ ថ្ងៃ — ចុចប៊ូតុងខាងក្រោម គណនីបង្កើតស្វ័យប្រវត្តិ មិនបាច់លេខសម្ងាត់ទេ។\n\n" +
+      "🎁 សាកល្បងឥតគិតថ្លៃ ១៥ ថ្ងៃ — ចុចប៊ូតុងខាងក្រោម គណនីបង្កើតស្វ័យប្រវត្តិ មិនបាច់លេខសម្ងាត់ទេ។\n\n" +
       "មានគណនីលេខទូរស័ព្ទរួចហើយ? បើកកម្មវិធី → គណនី → «ភ្ជាប់ Telegram»។",
-    start: "🚀 ចាប់ផ្ដើមឥតគិតថ្លៃ ៣០ ថ្ងៃ",
+    start: "🚀 ចាប់ផ្ដើមឥតគិតថ្លៃ ១៥ ថ្ងៃ",
     open: "📱 បើក KH Invoice",
     income: "➕ ចំណូល",
     expense: "➖ ចំណាយ",
@@ -180,6 +184,25 @@ const L = {
     cancelled: "បានបោះបង់។",
     down: "⚠️ KH Invoice មិនអាចភ្ជាប់បានឥឡូវនេះ។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។",
     granted: (until) => `🎉 KH Invoice Pro បានបើកដំណើរការ!${until ? ` រហូតដល់ ${until}` : ""}\nអរគុណសម្រាប់ការគាំទ្រ 🙏`,
+    section: "🧾 ផ្នែក KH Invoice — ប៊ូតុងខាងក្រោមប្ដូរមកមុខងារវិក្កយបត្រ។ ចុច ⬅️ ម៉ឺនុយដើម ដើម្បីត្រឡប់។",
+    kCreate: "🧾 បង្កើតវិក្កយបត្រ",
+    kOpen: "📱 បើក KH Invoice",
+    kSummary: "📋 សង្ខេបថ្ងៃនេះ",
+    kShop: "🏪 ឈ្មោះហាង",
+    kBack: "⬅️ ម៉ឺនុយដើម",
+    backDone: "⬅️ ត្រឡប់ទៅម៉ឺនុយដើម",
+    createHint: "🧾 ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកផ្ទាំងបង្កើតវិក្កយបត្រ (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    openHint: "📱 ជ្រើសផ្ទាំងដែលចង់បើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    aCreate: "🧾 បង្កើតវិក្កយបត្រ",
+    aInvoices: "📂 វិក្កយបត្រទាំងអស់",
+    aReport: "📊 របាយការណ៍",
+    aStock: "📦 ស្តុក",
+    aCustomer: "👥 អតិថិជន",
+    aDebt: "💳 បំណុល",
+    aHome: "🏠 ទំព័រដើម",
+    askShop: (current) => `🏪 វាយឈ្មោះហាងរបស់អ្នក (បង្ហាញលើវិក្កយបត្រ)${current ? `\nបច្ចុប្បន្ន៖ ${current}` : ""}`,
+    shopSaved: (name) => `✅ ឈ្មោះហាងបានរក្សាទុក៖ ${name}`,
+    noWebApp: "⚠️ កម្មវិធី KH Invoice មិនទាន់រៀបចំ link ទេ។",
   },
   en: {
     title: "🧾 KH Invoice",
@@ -191,9 +214,9 @@ const L = {
       "✅ Stock with low-stock alerts\n" +
       "✅ Customer and supplier debts\n" +
       "✅ Daily / monthly profit reports\n\n" +
-      "🎁 30-day free trial — tap below and your account is created automatically, no password.\n\n" +
+      "🎁 15-day free trial — tap below and your account is created automatically, no password.\n\n" +
       "Already have a phone-number account? Open the app → Account → “Connect Telegram”.",
-    start: "🚀 Start 30-day free trial",
+    start: "🚀 Start 15-day free trial",
     open: "📱 Open KH Invoice",
     income: "➕ Income",
     expense: "➖ Expense",
@@ -233,6 +256,25 @@ const L = {
     cancelled: "Cancelled.",
     down: "⚠️ KH Invoice can't be reached right now. Please try again in a moment.",
     granted: (until) => `🎉 KH Invoice Pro is on!${until ? ` Until ${until}` : ""}\nThank you for your support 🙏`,
+    section: "🧾 KH Invoice section — the buttons below now work on invoices. Tap ⬅️ Main menu to go back.",
+    kCreate: "🧾 Create invoice",
+    kOpen: "📱 Open KH Invoice",
+    kSummary: "📋 Today's summary",
+    kShop: "🏪 Shop name",
+    kBack: "⬅️ Main menu",
+    backDone: "⬅️ Back to the main menu",
+    createHint: "🧾 Tap below to open the new-invoice screen (signed in automatically):",
+    openHint: "📱 Pick a screen to open (signed in automatically):",
+    aCreate: "🧾 Create invoice",
+    aInvoices: "📂 All invoices",
+    aReport: "📊 Report",
+    aStock: "📦 Stock",
+    aCustomer: "👥 Customers",
+    aDebt: "💳 Debts",
+    aHome: "🏠 Home",
+    askShop: (current) => `🏪 Type your shop name (shown on invoices)${current ? `\nNow: ${current}` : ""}`,
+    shopSaved: (name) => `✅ Shop name saved: ${name}`,
+    noWebApp: "⚠️ The KH Invoice app link isn't set up yet.",
   },
 };
 const tx = (language) => L[language] ?? L.km;
@@ -268,9 +310,107 @@ export function parseEntry(text) {
   return { amount, currency, description: m[4].trim().slice(0, 200) };
 }
 
-function openButton(t, label) {
-  if (!config.khInvoiceWebUrl) return null;
-  return { text: label ?? t.open, web_app: { url: config.khInvoiceWebUrl } };
+/** The Mini App URL, opened on one screen (see the app's applyDeepLink). */
+function webAppUrl(screen) {
+  const base = config.khInvoiceWebUrl || (config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
+  if (!base) return null;
+  return screen ? `${base}${base.includes("?") ? "&" : "?"}screen=${screen}` : base;
+}
+
+// Inline, not reply-keyboard, web_app buttons: only a Mini App opened from an
+// inline button (or the menu button) is handed the signed initData the app
+// signs in with.
+function openButton(t, label, screen) {
+  const url = webAppUrl(screen);
+  return url ? { text: label ?? t.open, web_app: { url } } : null;
+}
+
+/** The keyboard under the message box while in the KH Invoice section. */
+export function sectionKeyboard(language) {
+  const t = tx(language);
+  return {
+    keyboard: [
+      [{ text: t.kCreate }, { text: t.kOpen }],
+      [{ text: t.income }, { text: t.expense }],
+      [{ text: t.kSummary }, { text: t.unpaid }],
+      [{ text: t.kShop }, { text: t.buy }],
+      [{ text: t.kBack }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+// Section buttons arrive as plain text, in either language.
+const SECTION_ACTIONS = new Map();
+for (const lang of Object.keys(L)) {
+  const t = L[lang];
+  SECTION_ACTIONS.set(t.kCreate, "create");
+  SECTION_ACTIONS.set(t.kOpen, "open");
+  SECTION_ACTIONS.set(t.income, "income");
+  SECTION_ACTIONS.set(t.expense, "expense");
+  SECTION_ACTIONS.set(t.kSummary, "summary");
+  SECTION_ACTIONS.set(t.unpaid, "unpaid");
+  SECTION_ACTIONS.set(t.kShop, "shop");
+  SECTION_ACTIONS.set(t.buy, "buy");
+  SECTION_ACTIONS.set(t.kBack, "back");
+}
+
+/** Entering the section: swap the keyboard, then show the numbers. */
+export async function enterSection(chatId, user) {
+  const t = tx(user.language);
+  await call("sendMessage", { chat_id: chatId, text: t.section, reply_markup: sectionKeyboard(user.language) });
+  await showHome(chatId, user);
+}
+
+async function showScreens(chatId, user, createOnly) {
+  const t = tx(user.language);
+  const rows = createOnly
+    ? [[openButton(t, t.aCreate, "invoice")]]
+    : [
+        [openButton(t, t.aCreate, "invoice"), openButton(t, t.aInvoices, "invoices")],
+        [openButton(t, t.aReport, "report"), openButton(t, t.aStock, "stock")],
+        [openButton(t, t.aCustomer, "customer"), openButton(t, t.aDebt, "debt")],
+        [openButton(t, t.aHome)],
+      ];
+  if (!rows[0][0]) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
+  return call("sendMessage", {
+    chat_id: chatId,
+    text: createOnly ? t.createHint : t.openHint,
+    reply_markup: { inline_keyboard: rows },
+  });
+}
+
+/**
+ * A tap on one of the section's keyboard buttons. Returns true when the text
+ * was one of them; `backToMenu` is the main keyboard to restore on ⬅️.
+ */
+export async function handleSectionButton(chatId, user, text, backToMenu) {
+  const action = SECTION_ACTIONS.get(String(text ?? "").trim());
+  if (!action || !enabled()) return false;
+  awaiting.delete(chatId);
+  const t = tx(user.language);
+  if (action === "create") await showScreens(chatId, user, true);
+  else if (action === "open") await showScreens(chatId, user, false);
+  else if (action === "income" || action === "expense") {
+    awaiting.set(chatId, { kind: "entry", type: action, at: Date.now() });
+    await call("sendMessage", { chat_id: chatId, text: t.askAmount(action) });
+  } else if (action === "summary") await showHome(chatId, user);
+  else if (action === "unpaid") await showUnpaid(chatId, user);
+  else if (action === "buy") await showPlans(chatId, user);
+  else if (action === "shop") {
+    const s = await bridge("status", { telegram: tgOf(user) }).catch(() => null);
+    if (!s?.linked) {
+      await call("sendMessage", { chat_id: chatId, text: t.needLink });
+      await showHome(chatId, user);
+    } else {
+      awaiting.set(chatId, { kind: "shop", at: Date.now() });
+      await call("sendMessage", { chat_id: chatId, text: t.askShop(s.business_name) });
+    }
+  } else if (action === "back") {
+    await call("sendMessage", { chat_id: chatId, text: t.backDone, reply_markup: backToMenu });
+  }
+  return true;
 }
 
 // Waiting for the amount after ➕ / ➖. In memory on purpose: a restart just
@@ -325,12 +465,16 @@ export async function showHome(chatId, user) {
   ];
 
   const keyboard = [];
+  const create = openButton(t, t.aCreate, "invoice");
   const open = openButton(t);
-  if (open) keyboard.push([open]);
+  if (create && open) keyboard.push([create, open]);
   keyboard.push([
     { text: t.income, callback_data: "inv:add:income" },
     { text: t.expense, callback_data: "inv:add:expense" },
   ]);
+  const report = openButton(t, t.aReport, "report");
+  const stock = openButton(t, t.aStock, "stock");
+  if (report && stock) keyboard.push([report, stock]);
   keyboard.push([
     { text: t.unpaid, callback_data: "inv:unpaid" },
     { text: t.refresh, callback_data: "inv:home" },
@@ -414,7 +558,7 @@ export async function handleStart(chatId, user, payload) {
   if (!payload || !enabled()) return false;
   const t = tx(user.language);
   if (payload === "invoice") {
-    await showHome(chatId, user);
+    await enterSection(chatId, user);
     return true;
   }
   if (payload === "invpay") {
@@ -451,7 +595,8 @@ export async function handleText(chatId, user, text) {
   const pending = awaiting.get(chatId);
   if (pending && Date.now() - pending.at < AWAIT_MS) {
     awaiting.delete(chatId);
-    await recordEntry(chatId, user, pending.type, text);
+    if (pending.kind === "shop") await saveShopName(chatId, user, text);
+    else await recordEntry(chatId, user, pending.type, text);
     return true;
   }
   awaiting.delete(chatId);
@@ -461,6 +606,12 @@ export async function handleText(chatId, user, text) {
     return true;
   }
   return false;
+}
+
+async function saveShopName(chatId, user, text) {
+  const t = tx(user.language);
+  const r = await bridge("set_name", { telegram: tgOf(user), business_name: text }).catch(() => ({ ok: false }));
+  await call("sendMessage", { chat_id: chatId, text: r.ok ? t.shopSaved(r.business_name) : r.error === "not_linked" ? t.needLink : t.down });
 }
 
 /** Forgets a half-finished ➕/➖ when the person moves on to something else. */
@@ -484,7 +635,7 @@ export async function handleCallback(cq, user) {
     else if (kind === "unpaid") await showUnpaid(chatId, user);
     else if (kind === "add") {
       const type = value === "expense" ? "expense" : "income";
-      awaiting.set(chatId, { type, at: Date.now() });
+      awaiting.set(chatId, { kind: "entry", type, at: Date.now() });
       await call("sendMessage", { chat_id: chatId, text: t.askAmount(type) });
     } else if (kind === "no") {
       await call("editMessageText", { chat_id: chatId, message_id: cq.message.message_id, text: t.cancelled });

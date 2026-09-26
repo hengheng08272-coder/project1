@@ -260,11 +260,13 @@ export async function handleMessage(message) {
   if (await handleAdminCommand(chatId, text)) return;
   if (await botPay.handleAdminPayCommand(chatId, text)) return;
 
+  if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language))) return;
+
   const action = actionForLabel(text) ?? commandAction(text);
   if (action) khInvoice.cancelPending(chatId);
   switch (action) {
     case "invoice":
-      return khInvoice.showHome(chatId, user);
+      return khInvoice.enterSection(chatId, user);
     case "account":
       return showAccount(chatId, user);
     case "history":

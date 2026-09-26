@@ -70,16 +70,25 @@ export function validateKhqrTemplate(payload) {
   return { ok: true, payload: trimmed };
 }
 
-/** The owner's QR rewritten for one payment of `amount` USD. */
-export function applyKhqrTemplate(template, amount) {
+/**
+ * The owner's QR rewritten for one payment of `amount` USD. `merchantName`
+ * replaces the payee name (tag 59) -- only for a bank that accepts that:
+ * ACLEDA does, ABA refuses such a QR outright.
+ */
+export function applyKhqrTemplate(template, amount, { merchantName = null } = {}) {
   const valid = validateKhqrTemplate(template);
   if (!valid.ok) return valid;
+  const name = merchantName ? String(merchantName).trim() : "";
+  // EMV caps the merchant name at 25 characters.
+  if (name.length > 25) return { ok: false, reason: "name-too-long" };
 
   const out = [];
   for (const field of parseKhqr(valid.payload)) {
     if (field.tag === TAG_CRC) continue; // recomputed below, over the result
     if (field.tag === TAG_AMOUNT) {
       out.push({ tag: TAG_AMOUNT, value: Number(amount).toFixed(2) });
+    } else if (field.tag === "59" && name) {
+      out.push({ tag: "59", value: name });
     } else if (field.tag === TAG_POINT_OF_INITIATION) {
       // 11 = static, 12 = dynamic; carrying an amount makes it dynamic.
       out.push({ tag: TAG_POINT_OF_INITIATION, value: "12" });

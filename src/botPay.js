@@ -18,7 +18,8 @@ import { PNG } from "pngjs";
 
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
-import { applyKhqrTemplate, khqrMd5, validateKhqrTemplate } from "./khqr.js";
+import { paymentSettings, savePaymentSettings } from "./botConfig.js";
+import { applyKhqrTemplate, khqrMd5, parseKhqr, validateKhqrTemplate } from "./khqr.js";
 import { renderKhqrCard } from "./khqrCard.js";
 import * as khInvoice from "./khInvoice.js";
 import { call } from "./notifyBot.js";
@@ -38,6 +39,7 @@ const L = {
     freeLine: (left) => `🆓 ឥតគិតថ្លៃនៅសល់៖ ${left} ដង`,
     premiumLine: (until) => `👑 VIP រហូតដល់ ${until}`,
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
+    chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
       `📷 ស្កេន QR ដោយ ABA, ACLEDA, Wing ឬ App ធនាគារណាក៏បាន\n` +
@@ -55,6 +57,7 @@ const L = {
     freeLine: (left) => `🆓 Free downloads left: ${left}`,
     premiumLine: (until) => `👑 VIP until ${until}`,
     notReady: "Payments aren't set up yet. Please contact the operator.",
+    chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
       `📷 Scan with ABA, ACLEDA, Wing or any KHQR bank app\n` +
@@ -151,18 +154,46 @@ function newTicket() {
   return `KH${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 36 ** 2).toString(36).toUpperCase().padStart(2, "0")}`;
 }
 
-/** A package was tapped: build its QR and send it. */
-async function startOrder(chatId, user, packageId) {
+/** The name printed on (and, for a bank that allows it, written into) the QR. */
+const serviceName = (pkg) => (khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : "SaveIt Pro");
+
+/**
+ * A package was tapped: build its QR and send it. With two banks set up the
+ * payer first picks which app they will pay from (`bank` null), because the
+ * two banks don't accept the same QR -- see botConfig.js.
+ */
+async function startOrder(chatId, user, packageId, bank = null) {
   const s = t(user.language);
   const [pkg] = rows(await db().from("bot_packages").select("*").eq("id", packageId).eq("active", true).limit(1));
   const [settings] = rows(await db().from("bot_settings").select("khqr_template").eq("id", 1).limit(1));
-  if (!pkg || !settings?.khqr_template) {
+  const extra = await paymentSettings();
+  const primary = settings?.khqr_template ?? null;
+  const alt = extra.alt_template ?? null;
+  if (!pkg || (!primary && !alt)) {
     await call("sendMessage", { chat_id: chatId, text: s.notReady });
     return;
   }
-
   const amount = Number(pkg.price_usd);
-  const built = applyKhqrTemplate(settings.khqr_template, amount);
+
+  if (!bank && primary && alt) {
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: s.chooseBank(packageTitle(pkg, user.language), amount.toFixed(2)),
+      reply_markup: {
+        inline_keyboard: [[
+          { text: `🏦 ${extra.primary_label}`, callback_data: `bot:bank:${pkg.id}~p` },
+          { text: `🏦 ${extra.alt_label}`, callback_data: `bot:bank:${pkg.id}~a` },
+        ]],
+      },
+    });
+    return;
+  }
+
+  const useAlt = (bank === "a" && Boolean(alt)) || !primary;
+  const template = useAlt ? alt : primary;
+  const built = applyKhqrTemplate(template, amount, {
+    merchantName: useAlt && extra.rename_alt ? serviceName(pkg) : null,
+  });
   if (!built.ok) {
     console.error("Bot KHQR build failed:", built.reason);
     await call("sendMessage", { chat_id: chatId, text: s.notReady });
@@ -196,7 +227,7 @@ async function startOrder(chatId, user, packageId) {
   const title = packageTitle(pkg, user.language);
   const png = await renderKhqrCard(built.payload, {
     title: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice" : "SaveIt KH",
-    merchantName: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : "SaveIt Pro",
+    merchantName: serviceName(pkg),
     subtitle: `${title} · $${amount.toFixed(2)}`,
     ticket,
   });
@@ -274,8 +305,9 @@ export async function handlePhoto(message, user) {
   const chatId = message.chat.id;
   const caption = String(message.caption ?? "").trim();
 
-  if (isAdminChat(chatId) && /^\/setqr\b/i.test(caption)) {
-    await saveQrFromPhoto(chatId, photo.file_id);
+  const setqr = /^\/setqr(2)?\b/i.exec(caption);
+  if (isAdminChat(chatId) && setqr) {
+    await saveQrFromPhoto(chatId, photo.file_id, setqr[1] ? "alt" : "primary");
     return true;
   }
 
@@ -318,14 +350,14 @@ export async function handlePhoto(message, user) {
   return true;
 }
 
-async function saveQrFromPhoto(chatId, fileId) {
+async function saveQrFromPhoto(chatId, fileId, slot) {
   try {
     const payload = decodeQr(await fetchTelegramFile(fileId));
     if (!payload) {
       await call("sendMessage", { chat_id: chatId, text: "❌ No QR code found in that photo. Send a clear, uncropped screenshot of your KHQR." });
       return;
     }
-    await saveTemplate(chatId, payload);
+    await saveTemplate(chatId, payload, slot);
   } catch (err) {
     await call("sendMessage", { chat_id: chatId, text: `❌ Couldn't read that photo: ${String(err?.message ?? err).slice(0, 200)}` });
   }
@@ -338,10 +370,20 @@ const TEMPLATE_PROBLEMS = {
     "it's a static QR (no amount). In ABA, create a QR *with an amount* (any amount, e.g. $1) and send that one -- the bot replaces the amount per order.",
 };
 
-async function saveTemplate(chatId, payload) {
+async function saveTemplate(chatId, payload, slot = "primary") {
   const valid = validateKhqrTemplate(payload);
   if (!valid.ok) {
     await call("sendMessage", { chat_id: chatId, text: `❌ Can't use this QR: ${TEMPLATE_PROBLEMS[valid.reason] ?? valid.reason}` });
+    return;
+  }
+  if (slot === "alt") {
+    await savePaymentSettings({ alt_template: valid.payload });
+    await call("sendMessage", {
+      chat_id: chatId,
+      text:
+        "✅ Second bank QR saved (ACLEDA). Payers now choose ABA or ACLEDA; the ACLEDA QR carries the service name " +
+        "(KH Invoice Pro / SaveIt Pro). /qrstatus shows both, /setqr2 off removes it.",
+    });
     return;
   }
   await db().from("bot_settings").update({ khqr_template: valid.payload, updated_at: nowIso() }).eq("id", 1);
@@ -351,12 +393,46 @@ async function saveTemplate(chatId, payload) {
   });
 }
 
+async function qrStatus(chatId) {
+  const [settings] = rows(await db().from("bot_settings").select("khqr_template").eq("id", 1).limit(1));
+  const extra = await paymentSettings();
+  const describe = (payload) => {
+    if (!payload) return "— not set";
+    const name = parseKhqr(payload)?.find((f) => f.tag === "59")?.value;
+    return `✓ set (payee: ${name ?? "?"})`;
+  };
+  await call("sendMessage", {
+    chat_id: chatId,
+    text:
+      `🏦 Payment QRs\n\n` +
+      `1️⃣ ${extra.primary_label}: ${describe(settings?.khqr_template)} (name kept as the bank wrote it)\n` +
+      `2️⃣ ${extra.alt_label}: ${describe(extra.alt_template)}${extra.alt_template && extra.rename_alt ? " (shows the service name)" : ""}\n\n` +
+      `/setqr — photo or text, bank 1\n/setqr2 — photo or text, bank 2\n/setqr2 off — remove bank 2`,
+  });
+}
+
 /** Operator text commands for payments. Returns true when handled. */
 export async function handleAdminPayCommand(chatId, text) {
   if (!isAdminChat(chatId)) return false;
-  const setKhqr = /^\/setqr\s+(\S+)$/i.exec(text);
+  if (/^\/qrstatus$/i.test(text)) {
+    await qrStatus(chatId);
+    return true;
+  }
+  if (/^\/setqr2\s+off$/i.test(text)) {
+    await savePaymentSettings({ alt_template: null });
+    await call("sendMessage", { chat_id: chatId, text: "✅ Second bank removed — only bank 1 is offered now." });
+    return true;
+  }
+  const setKhqr = /^\/setqr(2)?\s+(\S+)$/i.exec(text);
   if (setKhqr) {
-    await saveTemplate(chatId, setKhqr[1]);
+    await saveTemplate(chatId, setKhqr[2], setKhqr[1] ? "alt" : "primary");
+    return true;
+  }
+  if (/^\/setqr2$/i.test(text)) {
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: "Send your ACLEDA KHQR (one created WITH an amount) as a photo with the caption /setqr2, or /setqr2 <KHQR text>.",
+    });
     return true;
   }
   const retry = /^\/invactivate\s+(\S+)$/i.exec(text);
@@ -394,6 +470,13 @@ export async function handlePayCallback(cq, user) {
   if (kind === "buy") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
     await startOrder(chatId, user, value);
+    return true;
+  }
+
+  if (kind === "bank") {
+    const [packageId, bank] = String(value ?? "").split("~");
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await startOrder(chatId, user, packageId, bank === "a" ? "a" : "p");
     return true;
   }
 

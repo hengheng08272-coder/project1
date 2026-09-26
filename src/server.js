@@ -4,6 +4,9 @@
  * Every route is a POST guarded by the x-api-key header, matching how the
  * frontend's callBackend() helper sends requests.
  */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import cors from "cors";
 import express from "express";
 
@@ -42,6 +45,28 @@ app.use(
     allowedHeaders: ["Content-Type", "x-api-key"],
   })
 );
+
+/**
+ * The KH Invoice web app (webapps/kh-invoice, built with base /invoice/),
+ * served here so the bot's Mini App buttons have an https page on the same
+ * deployment. Hashed assets are cached for good; index.html never is, so a
+ * new build shows up on the next open.
+ */
+const KH_INVOICE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "webapps", "kh-invoice");
+app.use(
+  "/invoice",
+  express.static(KH_INVOICE_DIR, {
+    index: false,
+    setHeaders: (res, file) => {
+      if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      else res.setHeader("Cache-Control", "no-cache");
+    },
+  })
+);
+app.get(/^\/invoice\/(?!assets\/).*/, (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache");
+  res.sendFile(path.join(KH_INVOICE_DIR, "index.html"));
+});
 
 /** Express 4 does not forward async rejections, so every handler is wrapped. */
 const route = (handler) => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
