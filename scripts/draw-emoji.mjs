@@ -502,6 +502,313 @@ tile("tiktok", ["#2A2A2A", "#000000"], (g) => {
   note(0, 0, "#FFFFFF");
 }, { dark: true });
 
+// ------------------------------------------------------------ illustrations
+// Flat, outlined drawings (the style the operator picked) on a white tile.
+const INK = "#2F3441";
+const WHITE_TILE = ["#FFFFFF", "#E3E9F1"];
+
+function gear(g, cx, cy, rOuter, rBody, teeth, fillL, fillR, hole) {
+  g.save();
+  g.beginPath();
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const w = (Math.PI * 2) / teeth / 4;
+    g.lineTo(cx + Math.cos(a - w * 1.4) * rBody, cy + Math.sin(a - w * 1.4) * rBody);
+    g.lineTo(cx + Math.cos(a - w) * rOuter, cy + Math.sin(a - w) * rOuter);
+    g.lineTo(cx + Math.cos(a + w) * rOuter, cy + Math.sin(a + w) * rOuter);
+    g.lineTo(cx + Math.cos(a + w * 1.4) * rBody, cy + Math.sin(a + w * 1.4) * rBody);
+  }
+  g.closePath();
+  g.save();
+  g.clip();
+  g.fillStyle = fillL;
+  g.fillRect(cx - rOuter - 2, cy - rOuter - 2, rOuter + 2, rOuter * 2 + 4);
+  g.fillStyle = fillR;
+  g.fillRect(cx, cy - rOuter - 2, rOuter + 2, rOuter * 2 + 4);
+  g.restore();
+  g.stroke();
+  g.fillStyle = hole;
+  g.beginPath();
+  g.arc(cx, cy, rBody * 0.42, 0, Math.PI * 2);
+  g.fill();
+  if (hole === "#FFFFFF") g.stroke();
+  g.restore();
+}
+
+// Account: business person with a gear for a head.
+tile("m_account", WHITE_TILE, (g) => {
+  g.shadowColor = "transparent";
+  g.strokeStyle = INK;
+  g.lineWidth = 3;
+  // suit
+  g.fillStyle = "#C3CAD4";
+  g.beginPath();
+  g.moveTo(10, 98);
+  g.lineTo(12, 80);
+  g.quadraticCurveTo(14, 68, 32, 64);
+  g.lineTo(68, 64);
+  g.quadraticCurveTo(86, 68, 88, 80);
+  g.lineTo(90, 98);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // shirt
+  g.fillStyle = "#C4B5FD";
+  g.beginPath();
+  g.moveTo(36, 64);
+  g.lineTo(50, 84);
+  g.lineTo(64, 64);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // tie
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.moveTo(47, 72);
+  g.lineTo(53, 72);
+  g.lineTo(55, 90);
+  g.lineTo(50, 95);
+  g.lineTo(45, 90);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // lapels
+  g.beginPath();
+  g.moveTo(34, 65);
+  g.lineTo(44, 96);
+  g.moveTo(66, 65);
+  g.lineTo(56, 96);
+  g.stroke();
+  // gear head
+  gear(g, 50, 34, 25, 18, 8, "#FCD34D", "#F59E0B", INK);
+});
+
+// Help: support agent with a headset, a gear and a wrench beside.
+tile("m_help", WHITE_TILE, (g) => {
+  g.shadowColor = "transparent";
+  const LINE = "#2B7FD4";
+  const FILL = "#CFE5FB";
+  g.strokeStyle = LINE;
+  g.fillStyle = FILL;
+  g.lineWidth = 3.5;
+  // gear + wrench (behind)
+  gear(g, 72, 64, 17, 12, 8, FILL, FILL, "#FFFFFF");
+  g.strokeStyle = LINE;
+  g.fillStyle = FILL;
+  // wrench: handle, then a round head with an open jaw
+  g.beginPath();
+  g.roundRect(68, 26, 8, 26, 3);
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.arc(72, 20, 11, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.moveTo(66, 4);
+  g.lineTo(78, 4);
+  g.lineTo(76, 19);
+  g.lineTo(68, 19);
+  g.closePath();
+  g.fill();
+  g.beginPath();
+  g.moveTo(66, 10);
+  g.lineTo(68, 19);
+  g.lineTo(76, 19);
+  g.lineTo(78, 10);
+  g.stroke();
+  g.fillStyle = FILL;
+  // body
+  g.beginPath();
+  g.moveTo(8, 98);
+  g.lineTo(9, 84);
+  g.quadraticCurveTo(12, 70, 30, 67);
+  g.lineTo(46, 67);
+  g.quadraticCurveTo(64, 70, 66, 84);
+  g.lineTo(66, 98);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // head
+  g.beginPath();
+  g.arc(37, 44, 16, 0, Math.PI * 2);
+  g.fillStyle = "#FFFFFF";
+  g.fill();
+  g.stroke();
+  // hair
+  g.fillStyle = FILL;
+  g.beginPath();
+  g.moveTo(21, 42);
+  g.quadraticCurveTo(22, 27, 37, 27);
+  g.quadraticCurveTo(52, 27, 53, 42);
+  g.quadraticCurveTo(45, 34, 36, 38);
+  g.quadraticCurveTo(28, 40, 21, 42);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // eyes
+  g.fillStyle = LINE;
+  g.fillRect(30, 45, 3.5, 3.5);
+  g.fillRect(41, 45, 3.5, 3.5);
+  // headset
+  g.beginPath();
+  g.arc(37, 44, 21, Math.PI * 1.05, Math.PI * 1.95);
+  g.stroke();
+  g.fillStyle = FILL;
+  for (const x of [13, 55]) {
+    g.beginPath();
+    g.roundRect(x, 38, 7, 14, 3);
+    g.fill();
+    g.stroke();
+  }
+  g.beginPath();
+  g.moveTo(57, 52);
+  g.quadraticCurveTo(56, 60, 44, 58);
+  g.stroke();
+});
+
+// Income: an open hand receiving a coin.
+tile("inv_in", WHITE_TILE, (g) => {
+  g.shadowColor = "transparent";
+  g.strokeStyle = INK;
+  g.lineWidth = 3.5;
+  // coin
+  g.fillStyle = "#FCD776";
+  g.beginPath();
+  g.arc(58, 27, 17, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.fillStyle = INK;
+  g.font = "800 22px Inter";
+  g.textAlign = "center";
+  g.fillText("$", 58, 35);
+  // hand
+  g.fillStyle = "#F9C4AE";
+  g.beginPath();
+  g.moveTo(30, 66);
+  g.bezierCurveTo(44, 58, 62, 62, 78, 54);
+  g.bezierCurveTo(86, 50, 92, 58, 86, 63);
+  g.bezierCurveTo(74, 74, 54, 82, 36, 84);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.moveTo(50, 70);
+  g.lineTo(66, 68);
+  g.stroke();
+  // cuff
+  g.save();
+  g.translate(24, 78);
+  g.rotate(-0.62);
+  g.fillStyle = "#7DD3E8";
+  g.beginPath();
+  g.roundRect(-10, -14, 20, 30, 3);
+  g.fill();
+  g.stroke();
+  g.restore();
+});
+
+// Expense: one hand handing a banknote over to another.
+tile("inv_out", WHITE_TILE, (g) => {
+  g.shadowColor = "transparent";
+  const HAND = "#3B9AD9";
+  // lower, receiving hand
+  g.fillStyle = HAND;
+  g.beginPath();
+  g.moveTo(24, 70);
+  g.bezierCurveTo(40, 64, 60, 70, 76, 62);
+  g.bezierCurveTo(84, 58, 88, 66, 82, 70);
+  g.bezierCurveTo(70, 80, 50, 84, 30, 84);
+  g.closePath();
+  g.fill();
+  g.fillRect(12, 70, 14, 16);
+  // banknote
+  g.save();
+  g.translate(56, 38);
+  g.rotate(-0.45);
+  g.fillStyle = "#4ADE80";
+  g.strokeStyle = "#15803D";
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.roundRect(-20, -12, 40, 24, 3);
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.arc(0, 0, 7, 0, Math.PI * 2);
+  g.stroke();
+  g.restore();
+  // upper, giving hand
+  g.fillStyle = HAND;
+  g.beginPath();
+  g.moveTo(16, 30);
+  g.bezierCurveTo(28, 26, 40, 30, 48, 36);
+  g.bezierCurveTo(52, 40, 48, 46, 42, 44);
+  g.bezierCurveTo(34, 42, 26, 44, 18, 46);
+  g.closePath();
+  g.fill();
+  g.fillRect(6, 28, 12, 20);
+});
+
+// Create invoice: a bill with a checklist, a dollar sign and a pen.
+tile("inv_create", WHITE_TILE, (g) => {
+  g.shadowColor = "transparent";
+  const TEAL = "#16706A";
+  g.strokeStyle = TEAL;
+  g.lineWidth = 3.5;
+  // paper with folded corner
+  g.fillStyle = "#E3F6EE";
+  g.beginPath();
+  g.moveTo(20, 16);
+  g.lineTo(58, 16);
+  g.lineTo(70, 28);
+  g.lineTo(70, 86);
+  g.lineTo(20, 86);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  g.fillStyle = "#A7E3C9";
+  g.beginPath();
+  g.moveTo(58, 16);
+  g.lineTo(58, 28);
+  g.lineTo(70, 28);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  // checklist
+  g.lineWidth = 3;
+  for (const y of [30, 46, 62]) {
+    g.strokeRect(27, y - 5, 9, 9);
+    g.beginPath();
+    g.moveTo(42, y);
+    g.lineTo(56, y);
+    g.stroke();
+  }
+  g.fillStyle = TEAL;
+  g.font = "800 15px Inter";
+  g.textAlign = "center";
+  g.fillText("$", 47, 81);
+  // pen
+  g.save();
+  g.translate(74, 58);
+  g.rotate(0.55);
+  g.fillStyle = "#86EFAC";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.roundRect(-6, -30, 12, 44, 3);
+  g.fill();
+  g.stroke();
+  g.fillStyle = "#FDE68A";
+  g.beginPath();
+  g.moveTo(-6, 14);
+  g.lineTo(6, 14);
+  g.lineTo(0, 26);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  g.restore();
+});
+
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {
   const files = fs.readdirSync(OUT).filter((f) => f.endsWith(".png")).sort();
