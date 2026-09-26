@@ -3,7 +3,7 @@ import { db, rows } from "./db.js";
 import { config } from "./config.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
-import { applyAutoRules, processQueue } from "./downloader.js";
+import { applyAutoRules, processQueue, requeueOrphanedDownloads } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
 import { scanGroup } from "./scanner.js";
@@ -14,6 +14,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Runs one pass every WORKER_INTERVAL seconds until the process stops. */
 export async function loop() {
+  // A restart interrupts whatever was downloading; put those back in the
+  // queue before the first pass, or they stay 'downloading' forever.
+  try {
+    const recovered = await requeueOrphanedDownloads();
+    if (recovered) console.log(`Re-queued ${recovered} download(s) interrupted by a restart`);
+  } catch (err) {
+    console.error("Could not re-queue interrupted downloads:", err?.message ?? err);
+  }
+
   for (;;) {
     try {
       // Saving list URLs into R2 is plain HTTP: it must keep working while the

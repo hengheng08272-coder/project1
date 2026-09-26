@@ -875,4 +875,23 @@ const server = app.listen(config.port, () => {
 server.requestTimeout = 0;
 server.headersTimeout = 60_000;
 
+/**
+ * Railway starts the replacement container before stopping this one, so for a
+ * few seconds two processes hold the same Telegram session -- which is
+ * exactly what makes Telegram invalidate it. Dropping our connections as soon
+ * as we are asked to stop keeps that window as short as possible.
+ */
+let shuttingDown = false;
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received -- closing Telegram connections`);
+    server.close();
+    telegram.disconnectAll()
+      .catch(() => {})
+      .finally(() => process.exit(0));
+  });
+}
+
 export { app };

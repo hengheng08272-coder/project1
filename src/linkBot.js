@@ -165,17 +165,21 @@ async function quotaFor(user) {
 async function showAccount(chatId, user) {
   const t = texts(user.language);
   const quota = await quotaFor(user);
+  // No parse_mode anywhere in the bot: a username like "Lyna_produ" is an
+  // unclosed italic marker to Telegram's legacy Markdown, and it rejects the
+  // whole message ("Can't find end of the entity") rather than the one word.
+  // Nothing here needs formatting enough to risk a screen that never arrives.
   const lines = [
-    `📋 *${t.accountTitle}*`,
+    `📋 ${t.accountTitle}`,
     "",
-    `├ ${t.fieldId}: \`${user.telegram_user_id}\``,
+    `├ ${t.fieldId}: ${user.telegram_user_id}`,
     `├ ${t.fieldUsername}: ${user.username ? "@" + user.username : "—"}`,
     `├ ${t.fieldLanguage}: ${user.language === "en" ? "English" : "ភាសាខ្មែរ"}`,
     `├ ${t.fieldPlan}: ${quota.premium ? t.planVip(new Date(user.premium_until).toISOString().slice(0, 10)) : t.planFree}`,
-    `├ ${t.fieldUsed}: *${quota.used}*`,
-    `└ ${t.fieldQuota}: *${quota.premium ? t.unlimited : `${quota.left} / ${quota.total}`}*`,
+    `├ ${t.fieldUsed}: ${quota.used}`,
+    `└ ${t.fieldQuota}: ${quota.premium ? t.unlimited : `${quota.left} / ${quota.total}`}`,
   ];
-  await send(chatId, lines.join("\n"), { parse_mode: "Markdown" });
+  await send(chatId, lines.join("\n"));
 }
 
 async function showHistory(chatId, user) {
@@ -188,7 +192,7 @@ async function showHistory(chatId, user) {
   const icon = (status) =>
     status === "completed" ? "✅" : status === "failed" ? "❌" : status === "downloading" ? "⏳" : "🕐";
   const lines = jobs.map((job) => `${icon(job.item?.status)} ${job.source_url.slice(0, 60)}`);
-  await send(chatId, `*${t.historyTitle}*\n\n${lines.join("\n")}`, { parse_mode: "Markdown" });
+  await send(chatId, `📜 ${t.historyTitle}\n\n${lines.join("\n")}`);
 }
 
 async function showReferral(chatId, user, botUsername) {
@@ -197,9 +201,7 @@ async function showReferral(chatId, user, botUsername) {
     await db().from("bot_users").select("telegram_user_id").eq("referred_by", user.telegram_user_id)
   ).length;
   const link = `https://t.me/${botUsername}?start=ref_${user.telegram_user_id}`;
-  await send(chatId, `*${t.referralTitle}*\n\n${t.referralBody(count, config.botReferralBonus, link)}`, {
-    parse_mode: "Markdown",
-  });
+  await send(chatId, `👥 ${t.referralTitle}\n\n${t.referralBody(count, config.botReferralBonus, link)}`);
 }
 
 /**
@@ -234,7 +236,7 @@ export async function handleMessage(message) {
 
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
-    await send(chatId, t.welcome(name), { parse_mode: "Markdown", reply_markup: mainKeyboard(user.language) });
+    await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language) });
     return;
   }
 
@@ -251,7 +253,7 @@ export async function handleMessage(message) {
     case "language":
       return send(chatId, t.languagePrompt, { reply_markup: languageKeyboard() });
     case "help":
-      return send(chatId, t.help, { parse_mode: "Markdown" });
+      return send(chatId, t.help);
     case "download":
       return send(chatId, t.sendLink);
     case "buy": {

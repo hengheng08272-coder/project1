@@ -75,15 +75,15 @@ const TEXT = {
       `• តំណ Telegram (t.me/...) ពីក្រុម ឬ channel\n` +
       `• YouTube · Facebook · TikTok · Instagram · X និងគេហទំព័រជាង ១៨០០\n` +
       `• តំណផ្ទាល់ .mp4 / .m3u8 / .mp3\n\n` +
-      `គ្រាន់តែ *ផ្ញើតំណមក* ខ្ញុំធ្វើនៅសល់។`,
+      `គ្រាន់តែ ផ្ញើតំណមក ខ្ញុំធ្វើនៅសល់។`,
     help:
       `📘 របៀបប្រើ\n\n` +
       `1️⃣ ចម្លងតំណវីដេអូ (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ ផ្ញើវាមកក្នុងការសន្ទនានេះ\n` +
       `3️⃣ រង់ចាំបន្តិច — ខ្ញុំផ្ញើឯកសារ ឬ តំណទាញយកមកវិញ\n\n` +
-      `💡 ឯកសារធំជាង 50MB ខ្ញុំផ្ញើជា *តំណ* ជំនួស (កំណត់របស់ Telegram សម្រាប់ bot)។\n` +
-      `💡 ចង់យកតែសំឡេង? ផ្ញើតំណរួចសរសេរ \`audio\` នៅខាងក្រោយ។`,
-    accountTitle: "📋 ព័ត៌មានគណនី",
+      `💡 ឯកសារធំជាង 50MB ខ្ញុំផ្ញើជា តំណ ជំនួស (កំណត់របស់ Telegram សម្រាប់ bot)។\n` +
+      `💡 ចង់យកតែសំឡេង? ផ្ញើតំណរួចសរសេរ audio នៅខាងក្រោយ។`,
+    accountTitle: "ព័ត៌មានគណនី",
     fieldId: "ID",
     fieldUsername: "Username",
     fieldLanguage: "ភាសា",
@@ -93,13 +93,13 @@ const TEXT = {
     planVip: (until) => `👑 VIP ដល់ ${until}`,
     fieldUsed: "បានទាញយក",
     unlimited: "មិនកំណត់",
-    historyTitle: "📜 ប្រវត្តិទាញយក",
+    historyTitle: "ប្រវត្តិទាញយក",
     historyEmpty: "មិនទាន់មានការទាញយកទេ។ ផ្ញើតំណមកដើម្បីចាប់ផ្ដើម។",
-    referralTitle: "👥 កម្មវិធីណែនាំ",
+    referralTitle: "កម្មវិធីណែនាំ",
     referralBody: (count, bonus, link) =>
       `🎁 ណែនាំមិត្តម្នាក់ ទទួលបាន ${bonus} ការទាញយកបន្ថែម!\n\n` +
-      `📊 អ្នកបានណែនាំ៖ *${count}* នាក់\n\n` +
-      `🔗 តំណណែនាំរបស់អ្នក៖\n\`${link}\`\n\n` +
+      `📊 អ្នកបានណែនាំ៖ ${count} នាក់\n\n` +
+      `🔗 តំណណែនាំរបស់អ្នក៖\n${link}\n\n` +
       `➡️ ចែករំលែកតំណនេះ — ពេលមិត្តចុច និងចាប់ផ្ដើមប្រើ អ្នកទទួលបានភ្លាម។`,
     referralJoined: (name) => `🎉 ${name} បានចូលរួមតាមតំណណែនាំរបស់អ្នក! អ្នកទទួលបានការទាញយកបន្ថែម។`,
     languagePrompt: "🌐 ជ្រើសរើសភាសា៖",
@@ -127,15 +127,15 @@ const TEXT = {
       `• Telegram links (t.me/...) in groups and channels\n` +
       `• YouTube · Facebook · TikTok · Instagram · X and ~1800 more sites\n` +
       `• Direct .mp4 / .m3u8 / .mp3 links\n\n` +
-      `Just *send me a link* and I'll do the rest.`,
+      `Just send me a link and I'll do the rest.`,
     help:
       `📘 How to use\n\n` +
       `1️⃣ Copy a video link (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ Send it to this chat\n` +
       `3️⃣ Wait a moment — I send back the file, or a download link\n\n` +
-      `💡 Files over 50MB come back as a *link* instead (Telegram's own limit for bots).\n` +
-      `💡 Want audio only? Send the link followed by \`audio\`.`,
-    accountTitle: "📋 Account",
+      `💡 Files over 50MB come back as a link instead (Telegram's own limit for bots).\n` +
+      `💡 Want audio only? Send the link followed by: audio`,
+    accountTitle: "Account",
     fieldId: "ID",
     fieldUsername: "Username",
     fieldLanguage: "Language",
@@ -145,13 +145,13 @@ const TEXT = {
     planVip: (until) => `👑 VIP until ${until}`,
     fieldUsed: "Downloaded",
     unlimited: "unlimited",
-    historyTitle: "📜 Download history",
+    historyTitle: "Download history",
     historyEmpty: "Nothing downloaded yet. Send a link to start.",
-    referralTitle: "👥 Referral programme",
+    referralTitle: "Referral programme",
     referralBody: (count, bonus, link) =>
       `🎁 Get ${bonus} extra downloads for every friend you bring!\n\n` +
-      `📊 You have referred: *${count}*\n\n` +
-      `🔗 Your referral link:\n\`${link}\`\n\n` +
+      `📊 You have referred: ${count}\n\n` +
+      `🔗 Your referral link:\n${link}\n\n` +
       `➡️ Share it — you're credited as soon as they start the bot.`,
     referralJoined: (name) => `🎉 ${name} joined through your referral link! Extra downloads added.`,
     languagePrompt: "🌐 Choose a language:",

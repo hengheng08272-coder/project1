@@ -22,6 +22,40 @@ export function safeFilename(name) {
   return (cleaned || "video.mp4").slice(0, 120);
 }
 
+/**
+ * Puts back downloads a previous process was in the middle of.
+ *
+ * `running` lives in memory, so a restart (a deploy, a crash) leaves rows
+ * marked 'downloading' that nothing is downloading any more. processQueue
+ * only ever picks up 'queued', so those rows sat there forever -- after one
+ * deploy two half-finished episodes stopped dead and the five behind them
+ * never started. Only rows older than this process can be orphans: anything
+ * this process started is genuinely running.
+ */
+const PROCESS_STARTED_AT = new Date().toISOString();
+
+export async function requeueOrphanedDownloads() {
+  const stranded = rows(
+    await db()
+      .from("downloads")
+      .select("id, episode_id")
+      .eq("status", "downloading")
+      .lt("started_at", PROCESS_STARTED_AT)
+  );
+  if (stranded.length === 0) return 0;
+
+  const ids = stranded.map((d) => d.id);
+  await db()
+    .from("downloads")
+    .update({ status: "queued", progress: 0, downloaded_bytes: 0, speed_mbps: 0, started_at: null, queued_at: nowIso() })
+    .in("id", ids);
+  await db()
+    .from("episodes")
+    .update({ status: "queued" })
+    .in("id", stranded.map((d) => d.episode_id).filter(Boolean));
+  return stranded.length;
+}
+
 /** Starts as many queued downloads as the concurrency limit allows. */
 export async function processQueue() {
   const conf = await downloadSettings();

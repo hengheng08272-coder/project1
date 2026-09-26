@@ -58,13 +58,40 @@ function newClientFor(conf) {
  * account_id is what callers thread through here -- null on a group means
  * "the default account", the same thing it's always implicitly meant.
  */
+/**
+ * Connects, and then shuts the update loop down.
+ *
+ * Nothing in this service consumes Telegram updates -- scanning and
+ * downloading are plain API calls, and the bot is driven by a webhook -- but
+ * the client still polls updates.GetDifference forever in the background.
+ * That is the call that reported AuthKeyDuplicatedError ("concurrent usage
+ * ... the current session was invalidated") every time a deploy briefly ran
+ * two containers on the same session string, which killed the userbot until
+ * somebody signed it in again. No update loop, no such call.
+ */
+async function connectQuietly(c) {
+  if (!c.connected) await c.connect();
+  try {
+    c.updateManager?.stop?.();
+  } catch {
+    // Never let a library internal we only use as an optimization break a connect.
+  }
+  return c;
+}
+
+/** Closes every Telegram connection this process holds. */
+export async function disconnectAll() {
+  const all = [client, ...extraClients.values()].filter(Boolean);
+  await Promise.all(all.map((c) => c.disconnect().catch(() => {})));
+}
+
 export async function getClient({ requireAuth = true, accountId = null } = {}) {
   if (!accountId) {
     if (!client) {
       const conf = await telegramSettings();
       client = newClientFor(conf);
     }
-    if (!client.connected) await client.connect();
+    await connectQuietly(client);
     if (requireAuth && !(await client.isUserAuthorized())) {
       throw new Error("The userbot is not signed in yet.");
     }
@@ -78,7 +105,7 @@ export async function getClient({ requireAuth = true, accountId = null } = {}) {
     extra = newClientFor({ apiId: conf.api_id, apiHash: conf.api_hash, sessionString: conf.session_string });
     extraClients.set(accountId, extra);
   }
-  if (!extra.connected) await extra.connect();
+  await connectQuietly(extra);
   if (requireAuth && !(await extra.isUserAuthorized())) {
     throw new Error("That Telegram account is not signed in yet.");
   }
