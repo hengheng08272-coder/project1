@@ -38,7 +38,13 @@ const MENU = [
   { action: "referral", emoji: "m_referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
   { action: "language", emoji: "m_language", km: "🌐 ភាសា", en: "🌐 Language" },
   { action: "help", emoji: "m_help", km: "❓ របៀបប្រើ", en: "❓ How to use" },
-  { action: "app", emoji: "m_desktop", km: "🖥 បើកកម្មវិធី", en: "🖥 Open app" },
+  {
+    action: "app",
+    emoji: "logo",
+    km: "🚀 Open App · បើកកម្មវិធី",
+    en: "🚀 Open App",
+    aliases: ["🖥 បើកកម្មវិធី", "🖥 Open app"],
+  },
 ];
 
 const LABEL_TO_ACTION = new Map();
@@ -77,7 +83,8 @@ export function mainKeyboard(language) {
   };
   const rows = [];
   // Open App first, where it is seen -- it is also the chat's menu button.
-  if (config.webAppUrl) rows.push([{ ...button("app"), web_app: { url: config.webAppUrl } }]);
+  const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
+  if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
   rows.push(
     [button("free")],
     [button("premium")],
@@ -277,7 +284,7 @@ const TEXT = {
       `💡 YouTube · FB · IG · TikTok stay free and unlimited ♾`,
     proOwnAccount:
       `\n\n➕ Want your own private groups? Link your Telegram account\n` +
-      `      in 🖥 Open app → Settings → Telegram (optional)`,
+      `      in 🚀 Open App → Settings → Telegram (optional)`,
     notALink: "That isn't a link. Send something starting with http:// or https://.",
     working: "⏳ Working on it… I'll send it back when it's ready.",
     queued: "✅ Queued. I'll send it back once it's downloaded (a long video can take a few minutes).",

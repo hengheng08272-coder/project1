@@ -65,12 +65,14 @@ export const EMOJI = {
 
 const TOKEN = /\{:([a-z_]+):\}/g;
 
-// Once Telegram refuses them (owner without Premium), stop trying until the
-// pack is rebuilt, instead of paying a failed request on every message.
-let refused = false;
+// Once Telegram refuses them (owner without Premium, or ids of a pack that
+// was deleted), stop trying for a while instead of paying a failed request on
+// every message. A rebuilt pack clears it at once.
+const RETRY_MS = 10 * 60_000;
+let refusedAt = 0;
 
 async function emojiIds() {
-  if (refused) return {};
+  if (refusedAt && Date.now() - refusedAt < RETRY_MS) return {};
   return (await paymentSettings()).emoji ?? {};
 }
 
@@ -141,7 +143,7 @@ export function refusedEmoji(data) {
   const reason = String(data?.description ?? "");
   const hit = /custom emoji|custom_emoji|icon_custom_emoji|ENTITY|DOCUMENT_INVALID|STICKER/i.test(reason);
   if (hit) {
-    refused = true;
+    refusedAt = Date.now();
     console.error("Telegram refused custom emoji -- falling back to plain emoji:", reason);
   }
   return hit;
@@ -163,21 +165,8 @@ async function botApi(method, body) {
   return res.json().catch(() => ({}));
 }
 
-/**
- * Builds (or rebuilds) the bot's custom emoji pack, owned by `ownerId` --
- * the operator, who must have started the bot. Returns a report line.
- */
-export async function buildPack(ownerId) {
-  const me = await botApi("getMe", {});
-  const username = me?.result?.username;
-  if (!username) return "❌ Could not read the bot's username.";
-  const name = `saveit_icons_by_${username}`;
-  const tokens = Object.keys(EMOJI);
-
-  // Start clean so the order of the pack always matches `tokens`.
-  const existing = await botApi("getStickerSet", { name });
-  if (existing.ok) await botApi("deleteStickerSet", { name });
-
+/** The multipart request that creates `name` from the icons (stills only when `still`). */
+async function packForm(ownerId, name, tokens, still) {
   const form = new FormData();
   form.set("user_id", String(ownerId));
   form.set("name", name);
@@ -187,15 +176,40 @@ export async function buildPack(ownerId) {
   for (const [i, token] of tokens.entries()) {
     const [file, fallback] = EMOJI[token];
     // A moving version (.webm, VP9) wins over the still one when there is one.
-    const video = await fs.readFile(path.join(DIR, `${file}.webm`)).catch(() => null);
+    const video = still ? null : await fs.readFile(path.join(DIR, `${file}.webm`)).catch(() => null);
     const bytes = video ?? (await fs.readFile(path.join(DIR, `${file}.png`)));
     const ext = video ? "webm" : "png";
     form.set(`s${i}`, new Blob([bytes], { type: video ? "video/webm" : "image/png" }), `${file}.${ext}`);
     stickers.push({ sticker: `attach://s${i}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] });
   }
   form.set("stickers", JSON.stringify(stickers));
-  const created = await botApiForm("createNewStickerSet", form);
-  if (!created.ok) return `❌ Telegram refused the pack: ${created.description ?? "unknown error"}`;
+  return form;
+}
+
+/**
+ * Builds (or rebuilds) the bot's custom emoji pack, owned by `ownerId` --
+ * the operator, who must have started the bot. Returns a report line.
+ *
+ * Each build is a new set; the ids in use are only replaced (and the old set
+ * deleted) once the new one exists, so a failed build never leaves the bot
+ * pointing at emoji that are gone.
+ */
+export async function buildPack(ownerId) {
+  const me = await botApi("getMe", {});
+  const username = me?.result?.username;
+  if (!username) return "❌ Could not read the bot's username.";
+  const tokens = Object.keys(EMOJI);
+  const name = `saveit_v${Date.now().toString(36)}_by_${username}`;
+
+  let created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, false));
+  let note = "";
+  if (!created.ok) {
+    // The moving ones are the likelier to be refused; the stills always fit.
+    const why = created.description ?? "unknown error";
+    created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, true));
+    if (!created.ok) return `❌ Telegram refused the pack: ${created.description ?? why}`;
+    note = `\n(Moving icons were refused -- "${why}" -- so this pack is still images.)`;
+  }
 
   const set = await botApi("getStickerSet", { name });
   const list = set?.result?.stickers ?? [];
@@ -203,10 +217,18 @@ export async function buildPack(ownerId) {
   tokens.forEach((token, i) => {
     if (list[i]?.custom_emoji_id) ids[token] = list[i].custom_emoji_id;
   });
-  await savePaymentSettings({ emoji: ids });
-  refused = false;
+  const previous = (await paymentSettings()).emoji_set;
+  try {
+    await savePaymentSettings({ emoji: ids, emoji_set: name });
+  } catch (err) {
+    return `❌ The pack was made (https://t.me/addemoji/${name}) but could not be saved: ${err?.message ?? err}`;
+  }
+  refusedAt = 0;
+  for (const old of [previous, `saveit_icons_by_${username}`]) {
+    if (old && old !== name) await botApi("deleteStickerSet", { name: old }).catch(() => null);
+  }
   return (
-    `✅ Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.\n` +
+    `✅ Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
     `https://t.me/addemoji/${name}\n\n` +
     `Test: {:logo:} {:brand:} {:admin:} · {:m_free:} {:m_pro:} {:m_buy:} {:m_account:} {:m_help:} · {:inv_in:} {:inv_out:} {:inv_create:}\n` +
     `{:yt:} {:fb:} {:ig:} {:tt:} {:x:} · {:aba:} {:wing:} {:truemoney:} {:bakong:} {:khqr:}\n\n` +
