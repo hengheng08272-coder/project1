@@ -262,8 +262,20 @@ export async function handleMessage(message) {
       return send(chatId, t.languagePrompt, { reply_markup: languageKeyboard() });
     case "help":
       return send(chatId, t.help);
-    case "download":
-      return send(chatId, t.sendLink);
+    case "free": {
+      const quota = await quotaFor(user);
+      return send(chatId, t.freeScreen(quota.premium ? t.unlimited : quota.left));
+    }
+    case "premium": {
+      const quota = await quotaFor(user);
+      // "Linked" here means VIP: the private-Telegram path runs through the
+      // operator's own accounts, so it is gated the same way BOT_PRIVATE_LINKS
+      // gates a pasted t.me/c link -- no point offering a door that will not open.
+      return send(
+        chatId,
+        mayUsePrivateLinks(chatId, quota) ? t.premiumScreenOpen() : t.premiumScreenLocked()
+      );
+    }
     case "buy": {
       const quota = await quotaFor(user);
       return botPay.showPackages(chatId, user, quota.left);
@@ -366,6 +378,8 @@ function commandAction(text) {
     case "/language": return "language";
     case "/app": return "app";
     case "/buy": return "buy";
+    case "/free": return "free";
+    case "/premium": return "premium";
     default: return null;
   }
 }

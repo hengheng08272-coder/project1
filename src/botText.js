@@ -15,7 +15,11 @@ export const LANGUAGES = ["km", "en"];
  */
 const MENU = [
   { action: "account", km: "👤 គណនី", en: "👤 Account" },
-  { action: "download", km: "📥 ទាញយកតំណ", en: "📥 Download" },
+  // Two doors instead of one: the public sites anyone may use, and the
+  // private-Telegram path that needs VIP. Splitting them means nobody pastes
+  // a VIP link only to be told no -- the label says which is which up front.
+  { action: "free", km: "🆓 ទាញយក · FB · IG · YT · TikTok", en: "🆓 Free · FB · IG · YT · TikTok" },
+  { action: "premium", km: "👑 Premium · Telegram ឯកជន", en: "👑 Premium · private Telegram" },
   { action: "buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
   { action: "history", km: "📜 ប្រវត្តិ", en: "📜 History" },
   { action: "referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
@@ -47,8 +51,9 @@ export function mainKeyboard(language) {
     return item[language] ?? item.en;
   };
   const rows = [
-    [{ text: label("account") }, { text: label("download") }],
-    [{ text: label("buy") }],
+    [{ text: label("free") }],
+    [{ text: label("premium") }],
+    [{ text: label("account") }, { text: label("buy") }],
     [{ text: label("history") }, { text: label("referral") }],
     [{ text: label("language") }, { text: label("help") }],
   ];
@@ -71,10 +76,11 @@ const TEXT = {
   km: {
     welcome: (name) =>
       `👋 សួស្តី ${name}!\n\n` +
-      `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n` +
-      `• តំណ Telegram (t.me/...) ពីក្រុម ឬ channel\n` +
-      `• YouTube · Facebook · TikTok · Instagram · X និងគេហទំព័រជាង ១៨០០\n` +
-      `• តំណផ្ទាល់ .mp4 / .m3u8 / .mp3\n\n` +
+      `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n\n` +
+      `🆓 ឥតគិតថ្លៃ — YouTube · Facebook · TikTok ·\n` +
+      `      Instagram · X និងគេហទំព័រជាង ១៨០០\n\n` +
+      `👑 Premium — ក្រុម/channel Telegram ឯកជន\n` +
+      `      វីដេអូពេញទំហំ គ្មានកម្រិត 50MB\n\n` +
       `គ្រាន់តែ ផ្ញើតំណមក ខ្ញុំធ្វើនៅសល់។`,
     help:
       `📘 របៀបប្រើ\n\n` +
@@ -107,6 +113,33 @@ const TEXT = {
     openApp: (url) => `🖥 បើកកម្មវិធីពេញលេញ៖\n${url}`,
     openAppMissing: "🖥 កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
     sendLink: "📥 ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
+    freeScreen: (left) =>
+      `🆓 ទាញយកឥតគិតថ្លៃ\n\n` +
+      `▶️ YouTube    📘 Facebook\n` +
+      `📸 Instagram  🎵 TikTok\n` +
+      `✖️ X (Twitter)  🎮 Twitch\n` +
+      `🔗 តំណផ្ទាល់ .mp4 · .m3u8 · .mp3\n` +
+      `➕ គេហទំព័រជាង ១៨០០ ផ្សេងទៀត\n\n` +
+      `📊 នៅសល់៖ ${left}\n\n` +
+      `👉 ផ្ញើតំណមកបានឥឡូវនេះ\n` +
+      `💡 ចង់យកតែសំឡេង? សរសេរ audio បន្ទាប់ពីតំណ`,
+    premiumScreenOpen: () =>
+      `👑 Premium — Telegram ឯកជន\n\n` +
+      `✅ គណនីរបស់អ្នកបានភ្ជាប់រួចហើយ\n\n` +
+      `អ្នកអាចទាញយកពី៖\n` +
+      `🔒 ក្រុម / channel ឯកជន (t.me/c/...)\n` +
+      `🎬 វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
+      `⚡ ផ្ញើមកវិញភ្លាម (មិនបាច់រង់ចាំទាញយក)\n\n` +
+      `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
+    premiumScreenLocked: () =>
+      `👑 Premium — Telegram ឯកជន\n\n` +
+      `🔒 មុខងារនេះត្រូវការគណនីភ្ជាប់ (VIP)\n\n` +
+      `អ្វីដែលអ្នកទទួលបាន៖\n` +
+      `🔓 ទាញយកពីក្រុម / channel ឯកជន\n` +
+      `🎬 វីដេអូពេញទំហំ ទោះ 1.5GB ក៏បាន\n` +
+      `♾ ទាញយកមិនកំណត់ចំនួន\n` +
+      `⚡ លឿនជាង — ផ្ញើចេញភ្លាម\n\n` +
+      `👉 ចុច 💎 ទិញ / VIP ដើម្បីបើក`,
     notALink: "នោះមិនមែនជាតំណទេ។ សូមផ្ញើតំណដែលចាប់ផ្ដើមដោយ http:// ឬ https://។",
     working: "⏳ កំពុងដំណើរការ… ខ្ញុំនឹងផ្ញើមកវិញពេលរួច។",
     queued: "✅ បានបញ្ចូលក្នុងជួរ។ ខ្ញុំនឹងផ្ញើមកវិញពេលទាញយករួច (អាចចំណាយពេលពីរបីនាទីសម្រាប់វីដេអូវែង)។",
@@ -116,7 +149,7 @@ const TEXT = {
     failed: (reason) => `❌ ទាញយកមិនបាន៖ ${reason}`,
     tooBig: (mb) => `ឯកសារនេះ ${mb}MB ធំជាងកំណត់ 50MB របស់ Telegram សម្រាប់ bot — ខ្ញុំផ្ញើជាតំណជំនួស។`,
     noMedia: "សាររបស់តំណនោះគ្មានវីដេអូ ឬសំឡេងទេ។",
-    privateVipOnly: "🔒 តំណក្រុម/channel ឯកជន (t.me/c/...) ប្រើបានតែសមាជិក VIP ប៉ុណ្ណោះ។ ចុច 💎 ទិញ / VIP ដើម្បីបើក។",
+    privateVipOnly: "🔒 នេះជាតំណ Telegram ឯកជន — ជាមុខងារ 👑 Premium។ ចុច 💎 ទិញ / VIP ដើម្បីបើក។",
     privateNoAccess: "🔒 មិនអាចចូលមើល chat ឯកជននោះបានទេ — គណនីរបស់ bot មិនមែនជាសមាជិកនៅក្នុងនោះទេ។",
     inviteLink: "នោះជាតំណអញ្ជើញ (t.me/+...) មិនមែនតំណទៅកាន់ post ទេ។ សូមចូលក្នុង post វីដេអូ → ចុចលើវា → Copy Link រួចផ្ញើតំណនោះមក។",
     sendingVideo: "📤 កំពុងផ្ញើវីដេអូ…",
@@ -124,10 +157,11 @@ const TEXT = {
   en: {
     welcome: (name) =>
       `👋 Hi ${name}!\n\n` +
-      `I download videos and songs from:\n` +
-      `• Telegram links (t.me/...) in groups and channels\n` +
-      `• YouTube · Facebook · TikTok · Instagram · X and ~1800 more sites\n` +
-      `• Direct .mp4 / .m3u8 / .mp3 links\n\n` +
+      `I download videos and songs:\n\n` +
+      `🆓 Free — YouTube · Facebook · TikTok ·\n` +
+      `      Instagram · X and ~1800 more sites\n\n` +
+      `👑 Premium — private Telegram groups/channels,\n` +
+      `      full-size video with no 50MB limit\n\n` +
       `Just send me a link and I'll do the rest.`,
     help:
       `📘 How to use\n\n` +
@@ -160,6 +194,33 @@ const TEXT = {
     openApp: (url) => `🖥 Open the full app:\n${url}`,
     openAppMissing: "🖥 The web app URL isn't configured yet.",
     sendLink: "📥 Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
+    freeScreen: (left) =>
+      `🆓 Free download\n\n` +
+      `▶️ YouTube    📘 Facebook\n` +
+      `📸 Instagram  🎵 TikTok\n` +
+      `✖️ X (Twitter)  🎮 Twitch\n` +
+      `🔗 Direct .mp4 · .m3u8 · .mp3 links\n` +
+      `➕ ~1800 more sites\n\n` +
+      `📊 Downloads left: ${left}\n\n` +
+      `👉 Send a link now\n` +
+      `💡 Want audio only? Write audio after the link`,
+    premiumScreenOpen: () =>
+      `👑 Premium — private Telegram\n\n` +
+      `✅ Your account is linked\n\n` +
+      `You can download from:\n` +
+      `🔒 Private groups / channels (t.me/c/...)\n` +
+      `🎬 Full-size video — no 50MB limit\n` +
+      `⚡ Delivered instantly, nothing to wait for\n\n` +
+      `👉 Open the video post → tap it → Copy Link → send it here`,
+    premiumScreenLocked: () =>
+      `👑 Premium — private Telegram\n\n` +
+      `🔒 This needs a linked (VIP) account\n\n` +
+      `What you get:\n` +
+      `🔓 Downloads from private groups / channels\n` +
+      `🎬 Full-size video, even 1.5GB\n` +
+      `♾ Unlimited downloads\n` +
+      `⚡ Faster — delivered straight away\n\n` +
+      `👉 Tap 💎 Buy / VIP to unlock`,
     notALink: "That isn't a link. Send something starting with http:// or https://.",
     working: "⏳ Working on it… I'll send it back when it's ready.",
     queued: "✅ Queued. I'll send it back once it's downloaded (a long video can take a few minutes).",
@@ -169,7 +230,7 @@ const TEXT = {
     failed: (reason) => `❌ Download failed: ${reason}`,
     tooBig: (mb) => `That file is ${mb}MB, over Telegram's 50MB bot upload limit — here's a link instead.`,
     noMedia: "That message has no video or audio in it.",
-    privateVipOnly: "🔒 Links into private groups/channels (t.me/c/...) are for VIP members. Tap 💎 Buy / VIP to unlock them.",
+    privateVipOnly: "🔒 That's a private Telegram link — a 👑 Premium feature. Tap 💎 Buy / VIP to unlock it.",
     privateNoAccess: "🔒 Can't open that private chat — the bot's account isn't a member of it.",
     inviteLink: "That's an invite link (t.me/+...), not a link to a post. Open the video post → tap it → Copy Link, and send that.",
     sendingVideo: "📤 Sending the video…",
