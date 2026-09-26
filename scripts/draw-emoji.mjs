@@ -1,17 +1,19 @@
-// Draws the bot's custom emoji tiles into assets/emoji (100x100 PNG, the size
-// Telegram wants for a custom emoji pack). One glossy style for all of them:
-// gradient tile, top shine, thin light rim, soft shadow under the symbol.
-// Bank logos are raster files and are not made here.
+// Draws the bot's custom emoji into assets/emoji: 100x100 PNG stills and,
+// for every icon, a 100x100 WEBM loop (VP9 with alpha, 2.4 s at 30 fps, under
+// Telegram's 256 KB) -- the formats Telegram takes for custom emoji.
 //
-//   node scripts/draw-emoji.mjs            -> writes the tiles
+// One style, the operator's: line icons on a clear background, a light-to-
+// deep blue gradient with gold accents, each with its own small motion and a
+// glint of light that passes over it. The five icons the operator supplied
+// (assets/emoji-src: download, owner, vip, premium, success) are used as they
+// are; the KH Invoice and SaveIt logos are drawn from assets/emoji-src too.
+// Platform logos keep their brand tiles; bank logos are raster files.
+//
+//   node scripts/draw-emoji.mjs            -> writes the icons
 //   node scripts/draw-emoji.mjs sheet.png  -> also a preview sheet
 //
-// Tiles marked `animate` are also written as .webm (VP9 with alpha, 100x100,
-// 2 s loop at 30 fps): Telegram's format for moving custom emoji. That needs
-// ffmpeg with libvpx (FFMPEG=/path/to/ffmpeg if it is not on PATH).
-//
-// After changing tiles, the operator runs /makeemoji in the bot to rebuild
-// the pack.
+// Needs ffmpeg with libvpx (FFMPEG=/path/to/ffmpeg if it is not on PATH).
+// After changing icons, the operator runs /makeemoji in the bot.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -22,15 +24,19 @@ import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "assets", "emoji");
+const SRC = path.join(ROOT, "assets", "emoji-src");
 GlobalFonts.registerFromPath(path.join(ROOT, "assets", "fonts", "Inter_800ExtraBold.ttf"), "Inter");
 
 const S = 100;
 const R = 26;
 const FPS = 30;
-const FRAMES = 60; // 2 s loop
+const FRAMES = 72; // 2.4 s loop, the length of the supplied icons
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const TAU = Math.PI * 2;
-const MAX_WEBM_BYTES = 256 * 1024; // Telegram's cap for a video custom emoji
+const MAX_WEBM_BYTES = 256 * 1024;
+
+const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, x)));
+const wave = (t, k = 1, phase = 0) => Math.sin(TAU * (t * k + phase));
 
 function sparkle(g, x, y, r) {
   g.save();
@@ -51,7 +57,7 @@ function sparkle(g, x, y, r) {
 const twinkle = (t, phase) => 0.55 + 0.45 * Math.sin(TAU * (t * 2 + phase));
 
 /** One tile at moment t. `draw(g, t)` paints the symbol in white (or its own colours). */
-function paint(g, [top, bottom], draw, { sparkles = false, dark = false, sweep = false }, t) {
+function paintTile(g, [top, bottom], draw, { sparkles = false, dark = false, sweep = false }, t) {
   g.beginPath();
   g.roundRect(2, 2, 96, 96, R);
   g.clip();
@@ -125,11 +131,11 @@ function writeVideo(name, render) {
       fs.writeFileSync(path.join(dir, `f${String(i).padStart(3, "0")}.png`), render(i / FRAMES).toBuffer("image/png"));
     }
     const out = path.join(OUT, `${name}.webm`);
-    // Lower quality step by step until it fits Telegram's size cap.
     for (const crf of [30, 36, 42, 48]) {
       execFileSync(FFMPEG, [
         "-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(dir, "f%03d.png"),
-        "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", String(crf), "-an", out,
+        "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", String(crf),
+        "-metadata:s:v:0", "alpha_mode=1", "-an", out,
       ]);
       if (fs.statSync(out).size <= MAX_WEBM_BYTES) return;
     }
@@ -139,297 +145,781 @@ function writeVideo(name, render) {
   }
 }
 
-/**
- * Writes `name`.png (the still, at t = `still`, default 0) and, with `animate`, `name`.webm.
- * An animated tile sweeps a band of light and twinkles its sparkles unless
- * told otherwise; `draw(g, t)` adds its own motion.
- */
-function tile(name, colors, draw, opts = {}) {
-  const o = opts.animate ? { sweep: true, ...opts, sparkles: opts.sparkles ? "live" : false } : opts;
-  const render = (t) => {
-    const c = createCanvas(S, S);
-    paint(c.getContext("2d"), colors, draw, o, t);
-    return c;
-  };
-  fs.writeFileSync(path.join(OUT, `${name}.png`), render(opts.still ?? 0).toBuffer("image/png"));
-  const video = path.join(OUT, `${name}.webm`);
-  if (opts.animate) writeVideo(name, render);
-  else if (fs.existsSync(video)) fs.rmSync(video);
+// ------------------------------------------------------------ the style
+const grad = (g, stops, y0 = 8, y1 = 92) => {
+  const gr = g.createLinearGradient(0, y0, 0, y1);
+  stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c));
+  return gr;
+};
+const BLUE = ["#9BE3FF", "#46B4EC", "#2388CF"];
+const GOLD = ["#FFE9A0", "#F5BE3A", "#CF8A10"];
+const RED = ["#FFB4B4", "#F05252", "#C81E1E"];
+const PINK = ["#FFB3C6", "#F43F6E", "#BE123C"];
+const blue = (g, y0, y1) => grad(g, BLUE, y0, y1);
+const gold = (g, y0, y1) => grad(g, GOLD, y0, y1);
+
+/** A four-point glint. */
+function glint(g, x, y, r, colour = "#FFFFFF") {
+  g.save();
+  g.fillStyle = colour;
+  g.shadowColor = colour;
+  g.shadowBlur = 3;
+  g.beginPath();
+  g.moveTo(x, y - r);
+  g.quadraticCurveTo(x, y, x + r, y);
+  g.quadraticCurveTo(x, y, x, y + r);
+  g.quadraticCurveTo(x, y, x - r, y);
+  g.quadraticCurveTo(x, y, x, y - r);
+  g.fill();
+  g.restore();
 }
 
-const person = (g, x, y, s) => {
+/**
+ * One frame of an icon: `draw(g, t)` paints it on a clear 100x100 layer,
+ * a band of light passes over what was painted (only over it), a gold glint
+ * twinkles at a corner, and the layer gets a soft shadow so it reads on
+ * light and dark chat backgrounds alike.
+ */
+function frame(draw, { sweep = true, glints = true } = {}, t) {
+  const layer = createCanvas(S, S);
+  const g = layer.getContext("2d");
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.save();
+  draw(g, t);
+  g.restore();
+  if (sweep) {
+    const p = (t - 0.5) / 0.4; // the second half of the loop
+    if (p > 0 && p < 1) {
+      g.save();
+      g.globalCompositeOperation = "source-atop";
+      g.translate(-40 + 180 * p, 50);
+      g.rotate(0.45);
+      const band = g.createLinearGradient(-14, 0, 14, 0);
+      band.addColorStop(0, "rgba(255,255,255,0)");
+      band.addColorStop(0.5, "rgba(255,255,255,0.7)");
+      band.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = band;
+      g.fillRect(-14, -90, 28, 180);
+      g.restore();
+    }
+  }
+  if (glints) {
+    const k = Math.max(0, wave(t, 1, 0.1));
+    if (k > 0.05) glint(g, 88, 12, 6 * k, "#FFE38A");
+    const k2 = Math.max(0, wave(t, 1, 0.6));
+    if (k2 > 0.05) glint(g, 10, 84, 4 * k2, "#BDEBFF");
+  }
+  const c = createCanvas(S, S);
+  const out = c.getContext("2d");
+  out.shadowColor = "rgba(6,18,40,0.35)";
+  out.shadowBlur = 3;
+  out.shadowOffsetY = 1.5;
+  out.drawImage(layer, 0, 0);
+  return c;
+}
+
+/** Writes `name`.png (the still at t = `still`) and `name`.webm. */
+function icon(name, draw, opts = {}) {
+  const render = (t) => frame(draw, opts, t);
+  fs.writeFileSync(path.join(OUT, `${name}.png`), render(opts.still ?? 0.25).toBuffer("image/png"));
+  writeVideo(name, render);
+}
+
+/** A brand tile (the platform logos): the older glossy square, now moving. */
+function tiled(name, colors, draw, opts = {}) {
+  const o = { sweep: true, ...opts, sparkles: opts.sparkles ? "live" : false };
+  const render = (t) => {
+    const c = createCanvas(S, S);
+    paintTile(c.getContext("2d"), colors, draw, o, t);
+    return c;
+  };
+  fs.writeFileSync(path.join(OUT, `${name}.png`), render(0).toBuffer("image/png"));
+  writeVideo(name, render);
+}
+
+/** The operator's own icons: their 100 px WEBM as is, and a 100 px still from the 512 px PNG. */
+async function supplied(name, file) {
+  fs.copyFileSync(path.join(SRC, `${file}.webm`), path.join(OUT, `${name}.webm`));
+  const img = await loadImage(fs.readFileSync(path.join(SRC, `${file}.png`)));
+  const c = createCanvas(S, S);
+  c.getContext("2d").drawImage(img, 0, 0, S, S);
+  fs.writeFileSync(path.join(OUT, `${name}.png`), c.toBuffer("image/png"));
+}
+
+const line = (g, w, style) => {
+  g.lineWidth = w;
+  g.strokeStyle = style;
+};
+const path2 = (g, pts) => {
   g.beginPath();
-  g.arc(x, y - 12 * s, 11 * s, 0, Math.PI * 2);
-  g.fill();
-  g.beginPath();
-  g.moveTo(x - 20 * s, y + 22 * s);
-  g.quadraticCurveTo(x - 20 * s, y + 2 * s, x, y + 2 * s);
-  g.quadraticCurveTo(x + 20 * s, y + 2 * s, x + 20 * s, y + 22 * s);
-  g.closePath();
-  g.fill();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
 };
 
-// ------------------------------------------------------------ main menu
-tile("m_free", ["#4ADE80", "#15803D"], (g) => {
-  g.lineWidth = 10;
-  g.beginPath();
-  g.moveTo(50, 50);
-  g.bezierCurveTo(38, 30, 16, 32, 16, 50);
-  g.bezierCurveTo(16, 68, 38, 70, 50, 50);
-  g.bezierCurveTo(62, 30, 84, 32, 84, 50);
-  g.bezierCurveTo(84, 68, 62, 70, 50, 50);
-  g.stroke();
-}, { sparkles: true, animate: true });
+// ------------------------------------------------------------ supplied
+await supplied("dl", "download");
+await supplied("admin", "owner");
+await supplied("vip", "vip");
+await supplied("premium", "premium");
+await supplied("ok", "success");
 
-tile("m_pro", ["#38BDF8", "#1D6FD1"], (g, t) => {
-  // paper plane, gently gliding
-  g.translate(0, 3.5 * Math.sin(TAU * t));
-  g.translate(50, 50);
-  g.rotate(0.05 * Math.sin(TAU * t));
-  g.translate(-50, -50);
+// ------------------------------------------------------------ logos
+// SaveIt KH: the round badge -- blue ring, two chevrons and a stem falling
+// into a gold tray.
+function drawSaveIt(g, t) {
+  const bg = g.createRadialGradient(50, 40, 6, 50, 50, 50);
+  bg.addColorStop(0, "#15305E");
+  bg.addColorStop(1, "#060F22");
+  g.fillStyle = bg;
   g.beginPath();
-  g.moveTo(18, 48);
-  g.lineTo(80, 22);
-  g.lineTo(66, 78);
-  g.lineTo(46, 60);
-  g.closePath();
+  g.arc(50, 50, 47, 0, TAU);
   g.fill();
-  g.fillStyle = "#BFE3FA";
+  line(g, 3, "#2A4F8A");
   g.beginPath();
-  g.moveTo(46, 60);
-  g.lineTo(80, 22);
-  g.lineTo(42, 74);
-  g.closePath();
+  g.arc(50, 50, 46, 0, TAU);
+  g.stroke();
+  line(g, 0.8, "rgba(80,170,230,0.45)");
+  g.beginPath();
+  g.arc(50, 50, 41, 0, TAU);
+  g.stroke();
+  const drop = 5 * ease(Math.min(1, (t % 1) / 0.35)) * (1 - ease(Math.max(0, (t - 0.45) / 0.35)));
+  g.save();
+  g.translate(0, drop);
+  g.fillStyle = "#3EC8FF";
+  g.beginPath();
+  g.roundRect(45, 18, 10, 20, 4);
   g.fill();
-}, { sparkles: true, animate: true });
-
-tile("m_buy", ["#67E8F9", "#0E7490"], (g) => {
+  line(g, 9, "#3EC8FF");
+  path2(g, [[31, 43], [50, 56], [69, 43]]);
+  g.stroke();
+  line(g, 9, "#2F84E3");
+  path2(g, [[31, 55], [50, 68], [69, 55]]);
+  g.stroke();
+  g.restore();
+  const bar = g.createLinearGradient(33, 0, 67, 0);
+  const shine = 0.5 + 0.4 * wave(t);
+  bar.addColorStop(0, "#C98A12");
+  bar.addColorStop(shine, "#FFE591");
+  bar.addColorStop(1, "#C98A12");
+  g.fillStyle = bar;
   g.beginPath();
-  g.moveTo(30, 28);
-  g.lineTo(70, 28);
-  g.lineTo(84, 44);
-  g.lineTo(50, 82);
-  g.lineTo(16, 44);
-  g.closePath();
+  g.roundRect(33, 76, 34, 5, 2.5);
   g.fill();
-  g.strokeStyle = "#0E7490";
-  g.lineWidth = 3;
-  g.beginPath();
-  g.moveTo(16, 44);
-  g.lineTo(84, 44);
-  g.moveTo(38, 28);
-  g.lineTo(32, 44);
-  g.lineTo(50, 82);
-  g.lineTo(68, 44);
-  g.lineTo(62, 28);
-  g.stroke();
-}, { sparkles: true, animate: true });
+}
+icon("logo", drawSaveIt, { glints: false, still: 0.5 });
 
-tile("m_history", ["#A5B4FC", "#4338CA"], (g) => {
-  g.lineWidth = 8;
-  g.beginPath();
-  g.arc(52, 52, 27, Math.PI * 0.95, Math.PI * 2.75);
-  g.stroke();
-  g.beginPath();
-  g.moveTo(14, 44);
-  g.lineTo(26, 58);
-  g.lineTo(36, 42);
-  g.closePath();
-  g.fill();
-  g.lineWidth = 7;
-  g.beginPath();
-  g.moveTo(52, 36);
-  g.lineTo(52, 53);
-  g.lineTo(64, 60);
-  g.stroke();
-});
-
-tile("m_referral", ["#FDBA74", "#C2410C"], (g) => {
-  g.globalAlpha = 0.85;
-  person(g, 64, 44, 0.9);
-  g.globalAlpha = 1;
-  person(g, 40, 52, 1.05);
-});
-
-tile("m_language", ["#5EEAD4", "#0F766E"], (g) => {
-  g.lineWidth = 6;
-  g.beginPath();
-  g.arc(50, 50, 30, 0, Math.PI * 2);
-  g.stroke();
-  g.beginPath();
-  g.ellipse(50, 50, 13, 30, 0, 0, Math.PI * 2);
-  g.stroke();
-  g.lineWidth = 5;
-  g.beginPath();
-  g.moveTo(21, 40);
-  g.lineTo(79, 40);
-  g.moveTo(21, 60);
-  g.lineTo(79, 60);
-  g.stroke();
-});
-
-
-tile("m_desktop", ["#CBD5E1", "#475569"], (g) => {
-  g.beginPath();
-  g.roundRect(16, 22, 68, 46, 7);
-  g.fill();
-  g.fillStyle = "#475569";
-  g.fillRect(22, 28, 56, 34);
-  g.fillStyle = "#FFFFFF";
-  g.fillRect(44, 68, 12, 9);
-  g.beginPath();
-  g.roundRect(32, 76, 36, 6, 3);
-  g.fill();
-});
-
-// ------------------------------------------------------------ KH Invoice
-
-
-
-tile("inv_report", ["#60A5FA", "#0C447C"], (g) => {
-  for (const [x, top] of [[24, 56], [42, 38], [60, 48], [78, 26]]) {
+// KH Invoice: the operator's logo, square-cropped into a rounded tile.
+{
+  const img = await loadImage(fs.readFileSync(path.join(SRC, "kh-invoice-logo.jpg")));
+  icon("inv_app", (g, t) => {
     g.beginPath();
-    g.roundRect(x - 7, top, 14, 78 - top, 4);
+    g.roundRect(2, 2, 96, 96, 22);
+    g.clip();
+    const bg = g.createLinearGradient(0, 100, 100, 0);
+    bg.addColorStop(0, "#0F1249");
+    bg.addColorStop(1, "#097A78");
+    g.fillStyle = bg;
+    g.fillRect(0, 0, S, S);
+    const k = 1 + 0.03 * wave(t);
+    g.translate(50, 50);
+    g.scale(k, k);
+    g.drawImage(img, 70, 0, 431, 431, -48, -48, 96, 96);
+  }, { glints: false });
+}
+
+// The wordmark: "SaveIt" in blue over a gold "KH".
+icon("brand", (g) => {
+  g.textAlign = "center";
+  g.font = "800 27px Inter";
+  g.fillStyle = blue(g, 24, 46);
+  g.fillText("SaveIt", 50, 45);
+  g.font = "800 38px Inter";
+  g.fillStyle = gold(g, 52, 84);
+  g.fillText("KH", 50, 83);
+});
+
+// ------------------------------------------------------------ main menu
+// Free: a gold infinity with light running round it.
+icon("m_free", (g, t) => {
+  const inf = () => {
+    g.beginPath();
+    g.moveTo(50, 50);
+    g.bezierCurveTo(62, 30, 88, 32, 88, 50);
+    g.bezierCurveTo(88, 68, 62, 70, 50, 50);
+    g.bezierCurveTo(38, 30, 12, 32, 12, 50);
+    g.bezierCurveTo(12, 68, 38, 70, 50, 50);
+  };
+  line(g, 10, gold(g, 34, 66));
+  inf();
+  g.stroke();
+  line(g, 4, "rgba(255,255,255,0.9)");
+  g.setLineDash([14, 200]);
+  g.lineDashOffset = -214 * t;
+  inf();
+  g.stroke();
+});
+
+// Account: a blue head, gold shoulders; the head nods.
+icon("m_account", (g, t) => {
+  const nod = 2 * wave(t);
+  line(g, 7, blue(g, 12, 50));
+  g.beginPath();
+  g.arc(50, 32 + nod, 14, 0, TAU);
+  g.stroke();
+  line(g, 7, gold(g, 58, 88));
+  g.beginPath();
+  g.moveTo(20, 86);
+  g.bezierCurveTo(20, 58, 80, 58, 80, 86);
+  g.stroke();
+});
+
+// History: a clock whose gold hands turn.
+icon("m_history", (g, t) => {
+  line(g, 7, blue(g));
+  g.beginPath();
+  g.arc(50, 50, 38, 0, TAU);
+  g.stroke();
+  line(g, 6, gold(g, 20, 70));
+  const a = TAU * t - Math.PI / 2;
+  path2(g, [[50, 50], [50 + Math.cos(a) * 26, 50 + Math.sin(a) * 26]]);
+  g.stroke();
+  const b = -Math.PI * 5 / 6 + (TAU * t) / 12; // the hour hand near ten
+  path2(g, [[50, 50], [50 + Math.cos(b) * 17, 50 + Math.sin(b) * 17]]);
+  g.stroke();
+  g.fillStyle = "#F5BE3A";
+  g.beginPath();
+  g.arc(50, 50, 4, 0, TAU);
+  g.fill();
+});
+
+// Referral: three linked people-dots; a pulse runs from the gold one.
+icon("m_referral", (g, t) => {
+  const pts = [[50, 20], [20, 76], [80, 76]];
+  line(g, 6, blue(g));
+  path2(g, [...pts, pts[0]]);
+  g.stroke();
+  pts.forEach(([x, y], i) => {
+    const k = 1 + 0.25 * Math.max(0, wave(t, 1, -i / 3));
+    g.fillStyle = i === 0 ? gold(g, 8, 32) : blue(g, 64, 88);
+    g.beginPath();
+    g.arc(x, y, 10 * k, 0, TAU);
+    g.fill();
+  });
+});
+
+// Language: a globe; the gold meridian turns.
+icon("m_language", (g, t) => {
+  line(g, 6, blue(g));
+  g.beginPath();
+  g.arc(50, 50, 38, 0, TAU);
+  g.stroke();
+  path2(g, [[12, 50], [88, 50]]);
+  g.stroke();
+  line(g, 5, blue(g));
+  g.beginPath();
+  g.ellipse(50, 31, 30, 1, 0, 0, TAU);
+  g.moveTo(80, 69);
+  g.ellipse(50, 69, 30, 1, 0, 0, TAU);
+  g.stroke();
+  line(g, 6, gold(g));
+  g.beginPath();
+  g.ellipse(50, 50, Math.max(2, 16 * Math.abs(Math.cos(Math.PI * t))), 38, 0, 0, TAU);
+  g.stroke();
+});
+
+// Help: a gold question mark in a blue ring, tilting.
+icon("m_help", (g, t) => {
+  line(g, 7, blue(g));
+  g.beginPath();
+  g.arc(50, 50, 38, 0, TAU);
+  g.stroke();
+  g.save();
+  g.translate(50, 50);
+  g.rotate(0.18 * wave(t));
+  line(g, 8, gold(g, 20, 70));
+  g.beginPath();
+  g.moveTo(-11, -9);
+  g.bezierCurveTo(-11, -26, 13, -26, 13, -11);
+  g.bezierCurveTo(13, 0, 0, 0, 0, 9);
+  g.stroke();
+  g.fillStyle = "#E6A424";
+  g.beginPath();
+  g.arc(0, 21, 5, 0, TAU);
+  g.fill();
+  g.restore();
+});
+
+// Desktop app: a blue screen on a gold stand, a play mark inside.
+icon("m_desktop", (g, t) => {
+  line(g, 7, blue(g, 14, 70));
+  g.beginPath();
+  g.roundRect(12, 16, 76, 52, 8);
+  g.stroke();
+  line(g, 7, gold(g, 70, 90));
+  path2(g, [[50, 70], [50, 82]]);
+  g.stroke();
+  path2(g, [[32, 86], [68, 86]]);
+  g.stroke();
+  const k = 1 + 0.15 * Math.max(0, wave(t, 2));
+  g.translate(52, 42);
+  g.scale(k, k);
+  g.fillStyle = gold(g, -10, 10);
+  path2(g, [[-8, -11], [11, 0], [-8, 11]]);
+  g.closePath();
+  g.fill();
+});
+
+// Emoji Maker: a gold sparkle turning, a blue one twinkling.
+icon("sparkle", (g, t) => {
+  g.save();
+  g.translate(44, 54);
+  g.rotate(TAU * t * 0.25);
+  const r = 32 * (0.88 + 0.12 * wave(t, 2));
+  g.fillStyle = gold(g, -r, r);
+  g.beginPath();
+  g.moveTo(0, -r);
+  g.quadraticCurveTo(0, 0, r, 0);
+  g.quadraticCurveTo(0, 0, 0, r);
+  g.quadraticCurveTo(0, 0, -r, 0);
+  g.quadraticCurveTo(0, 0, 0, -r);
+  g.fill();
+  g.restore();
+  const s = 13 * (0.6 + 0.4 * Math.max(0, wave(t, 2, 0.5)));
+  g.fillStyle = blue(g, 8, 40);
+  g.beginPath();
+  g.moveTo(78, 24 - s);
+  g.quadraticCurveTo(78, 24, 78 + s, 24);
+  g.quadraticCurveTo(78, 24, 78, 24 + s);
+  g.quadraticCurveTo(78, 24, 78 - s, 24);
+  g.quadraticCurveTo(78, 24, 78, 24 - s);
+  g.fill();
+}, { glints: false });
+
+// ------------------------------------------------------------ KH Invoice section
+// Create: a receipt whose gold lines write themselves.
+icon("inv_create", (g, t) => {
+  line(g, 7, blue(g));
+  g.beginPath();
+  g.moveTo(24, 12);
+  g.lineTo(76, 12);
+  g.lineTo(76, 84);
+  for (let i = 0; i < 6; i++) g.lineTo(76 - (i + 0.5) * (52 / 6), i % 2 ? 84 : 90);
+  g.lineTo(24, 84);
+  g.closePath();
+  g.stroke();
+  line(g, 6, gold(g, 20, 70));
+  const rows = [[34, 30, 66], [34, 44, 66], [34, 58, 54]];
+  rows.forEach(([x0, y, x1], i) => {
+    const p = ease((t * 1.4 - i * 0.22) / 0.3);
+    if (p <= 0) return;
+    path2(g, [[x0, y], [x0 + (x1 - x0) * p, y]]);
+    g.stroke();
+  });
+}, { still: 0.9 });
+
+const wallet = (g) => {
+  line(g, 7, blue(g, 30, 88));
+  g.beginPath();
+  g.roundRect(12, 34, 70, 50, 9);
+  g.stroke();
+  g.fillStyle = gold(g, 50, 66);
+  g.beginPath();
+  g.roundRect(64, 50, 24, 17, 6);
+  g.fill();
+};
+const coin = (g, x, y, r = 10) => {
+  g.fillStyle = gold(g, y - r, y + r);
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.fill();
+  line(g, 2, "rgba(255,255,255,0.7)");
+  g.beginPath();
+  g.arc(x, y, r - 4, 0, TAU);
+  g.stroke();
+};
+// Income: a coin drops into the wallet.
+icon("inv_in", (g, t) => {
+  const p = ease((t % 1) / 0.55);
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, S, 40);
+  g.clip();
+  coin(g, 42, -4 + 36 * p, 11);
+  g.restore();
+  wallet(g);
+  line(g, 5, blue(g, 4, 30));
+  const d = 3 * Math.max(0, wave(t, 2));
+  path2(g, [[74, 6 + d], [74, 26 + d]]);
+  g.stroke();
+  path2(g, [[67, 19 + d], [74, 26 + d], [81, 19 + d]]);
+  g.stroke();
+}, { still: 0.35 });
+// Expense: a coin rises out of the wallet with an arrow.
+icon("inv_out", (g, t) => {
+  const p = ease((t % 1) / 0.6);
+  wallet(g);
+  const fade = Math.max(0, (p - 0.7) / 0.3);
+  if (fade < 1) coin(g, 40, 30 - 22 * p, 10 * (1 - fade) + 0.01);
+  line(g, 5, blue(g, 4, 30));
+  path2(g, [[74, 28], [74, 8]]);
+  g.stroke();
+  path2(g, [[67, 15], [74, 8], [81, 15]]);
+  g.stroke();
+}, { still: 0.3 });
+
+// Report: bars that grow, the last one gold.
+icon("inv_report", (g, t) => {
+  const bars = [[16, 0.45], [36, 0.65], [56, 0.5], [76, 0.9]];
+  bars.forEach(([x, h], i) => {
+    const p = 0.6 + 0.4 * ease(((t * 1.6 - i * 0.12) % 1) / 0.4);
+    const top = 84 - 64 * h * p;
+    g.fillStyle = i === 3 ? gold(g, top, 84) : blue(g, top, 84);
+    g.beginPath();
+    g.roundRect(x - 1, top, 12, 84 - top, 4);
+    g.fill();
+  });
+  line(g, 5, blue(g, 86, 92));
+  path2(g, [[10, 90], [90, 90]]);
+  g.stroke();
+});
+
+// Stock: a box whose gold-taped lid lifts.
+icon("inv_stock", (g, t) => {
+  const lift = 5 * Math.max(0, wave(t, 2));
+  line(g, 7, blue(g, 40, 90));
+  g.beginPath();
+  g.roundRect(18, 42, 64, 44, 6);
+  g.stroke();
+  g.save();
+  g.translate(0, -lift);
+  line(g, 7, blue(g, 20, 44));
+  g.beginPath();
+  g.roundRect(12, 26, 76, 16, 5);
+  g.stroke();
+  g.restore();
+  line(g, 7, gold(g, 30, 70));
+  path2(g, [[50, 26 - lift], [50, 42 - lift]]);
+  g.stroke();
+  path2(g, [[50, 50], [50, 64]]);
+  g.stroke();
+});
+
+// Waiting / unpaid: an hourglass, gold sand running, then it turns.
+const hourglass = (g, t) => {
+  const flip = ease((t - 0.82) / 0.18);
+  g.translate(50, 50);
+  g.rotate(Math.PI * flip);
+  line(g, 7, blue(g, -40, 40));
+  path2(g, [[-22, -38], [22, -38]]);
+  g.stroke();
+  path2(g, [[-22, 38], [22, 38]]);
+  g.stroke();
+  line(g, 6, blue(g, -40, 40));
+  g.beginPath();
+  g.moveTo(-17, -38); g.quadraticCurveTo(-17, -8, 0, 0); g.quadraticCurveTo(-17, 8, -17, 38);
+  g.moveTo(17, -38); g.quadraticCurveTo(17, -8, 0, 0); g.quadraticCurveTo(17, 8, 17, 38);
+  g.stroke();
+  const run = Math.min(1, t / 0.82);
+  const h = 24 * (1 - run);
+  g.fillStyle = gold(g, -30, 34);
+  if (h > 0.5) {
+    g.beginPath();
+    g.moveTo(-11 * (h / 24), -5 - h); g.lineTo(11 * (h / 24), -5 - h); g.lineTo(0, -3); g.closePath();
     g.fill();
   }
-  g.fillRect(16, 79, 70, 5);
-});
-
-tile("inv_stock", ["#34D399", "#0B5E48"], (g) => {
+  const b = 24 * run;
   g.beginPath();
-  g.moveTo(50, 18);
-  g.lineTo(80, 33);
-  g.lineTo(80, 67);
-  g.lineTo(50, 82);
-  g.lineTo(20, 67);
-  g.lineTo(20, 33);
-  g.closePath();
+  g.moveTo(-13, 33); g.lineTo(13, 33); g.lineTo(0, 33 - b); g.closePath();
   g.fill();
-  g.shadowColor = "transparent";
-  g.strokeStyle = "#0B5E48";
-  g.lineWidth = 4;
-  g.beginPath();
-  g.moveTo(20, 33);
-  g.lineTo(50, 48);
-  g.lineTo(80, 33);
-  g.moveTo(50, 48);
-  g.lineTo(50, 82);
-  g.stroke();
-});
+  if (run < 1) g.fillRect(-1.2, -3, 2.4, 36 - b);
+};
+icon("wait", hourglass, { still: 0.45 });
+icon("inv_unpaid", hourglass, { still: 0.45 });
 
-tile("inv_unpaid", ["#FCD34D", "#C27A12"], (g) => {
-  g.beginPath();
-  g.arc(50, 50, 29, 0, Math.PI * 2);
-  g.fill();
-  g.shadowColor = "transparent";
-  g.strokeStyle = "#C27A12";
-  g.lineWidth = 6;
-  g.beginPath();
-  g.moveTo(50, 33);
-  g.lineTo(50, 51);
-  g.lineTo(62, 58);
-  g.stroke();
-});
-
-tile("inv_refresh", ["#94A3B8", "#45546B"], (g) => {
-  g.lineWidth = 9;
-  g.beginPath();
-  g.arc(50, 50, 24, Math.PI * 1.15, Math.PI * 1.95);
-  g.stroke();
-  g.beginPath();
-  g.arc(50, 50, 24, Math.PI * 0.15, Math.PI * 0.95);
-  g.stroke();
-  const head = (x, y, a) => {
+// Refresh: two arrows chasing round.
+icon("inv_refresh", (g, t) => {
+  g.translate(50, 50);
+  g.rotate(TAU * ease(t / 0.7));
+  const arc = (a0, a1, style) => {
+    line(g, 7, style);
+    g.beginPath();
+    g.arc(0, 0, 32, a0, a1);
+    g.stroke();
+    const x = Math.cos(a1) * 32, y = Math.sin(a1) * 32;
+    g.fillStyle = style;
     g.save();
     g.translate(x, y);
-    g.rotate(a);
-    g.beginPath();
-    g.moveTo(0, -11);
-    g.lineTo(11, 2);
-    g.lineTo(-9, 4);
+    g.rotate(a1 + Math.PI / 2);
+    path2(g, [[-9, -6], [9, 0], [-9, 6]]);
+    g.closePath();
+    g.restore();
+    g.save();
+    g.translate(x, y);
+    g.rotate(a1);
+    path2(g, [[-8, -3], [0, 9], [8, -3]]);
     g.closePath();
     g.fill();
     g.restore();
   };
-  head(73, 42, 0.3);
-  head(27, 58, Math.PI + 0.3);
+  arc(Math.PI * 0.15, Math.PI * 0.85, blue(g, -40, 40));
+  arc(Math.PI * 1.15, Math.PI * 1.85, gold(g, -40, 40));
 });
 
-tile("inv_pro", ["#FDE68A", "#D18A12"], (g) => {
+// Summary: a clipboard with a gold clip, its lines ticking in.
+icon("inv_summary", (g, t) => {
+  line(g, 7, blue(g));
   g.beginPath();
-  g.moveTo(18, 70);
-  g.lineTo(22, 32);
-  g.lineTo(37, 50);
-  g.lineTo(50, 24);
-  g.lineTo(63, 50);
-  g.lineTo(78, 32);
-  g.lineTo(82, 70);
+  g.roundRect(18, 16, 64, 74, 8);
+  g.stroke();
+  g.fillStyle = gold(g, 8, 26);
+  g.beginPath();
+  g.roundRect(36, 8, 28, 16, 5);
+  g.fill();
+  line(g, 6, blue(g));
+  [38, 54, 70].forEach((y, i) => {
+    const p = ease((t * 1.4 - i * 0.2) / 0.3);
+    if (p <= 0) return;
+    g.fillStyle = "#F5BE3A";
+    g.beginPath();
+    g.arc(32, y, 3.5, 0, TAU);
+    g.fill();
+    path2(g, [[42, y], [42 + 26 * p, y]]);
+    g.stroke();
+  });
+}, { still: 0.9 });
+
+// Shop: a gold awning over a blue shopfront; the awning sways.
+icon("inv_shop", (g, t) => {
+  line(g, 7, blue(g, 40, 90));
+  g.beginPath();
+  g.moveTo(18, 46);
+  g.lineTo(18, 86);
+  g.lineTo(82, 86);
+  g.lineTo(82, 46);
+  g.stroke();
+  g.beginPath();
+  g.roundRect(42, 60, 16, 26, 3);
+  g.stroke();
+  const sway = 1.5 * wave(t, 2);
+  g.fillStyle = gold(g, 14, 50);
+  g.beginPath();
+  g.moveTo(16, 14);
+  g.lineTo(84, 14);
+  g.lineTo(92, 36);
+  for (let i = 0; i < 4; i++) {
+    const x0 = 92 - i * 21, x1 = x0 - 21;
+    g.quadraticCurveTo((x0 + x1) / 2, 50 + sway, x1, 36);
+  }
   g.closePath();
   g.fill();
-  g.fillRect(18, 72, 64, 9);
-  g.shadowColor = "transparent";
-  g.fillStyle = "#E11D48";
-  g.beginPath();
-  g.arc(50, 60, 5, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = "#2563EB";
-  for (const x of [32, 68]) {
-    g.beginPath();
-    g.arc(x, 62, 4, 0, Math.PI * 2);
-    g.fill();
-  }
-}, { sparkles: true, animate: true });
+});
 
-tile("inv_summary", ["#A78BFA", "#4F3BC4"], (g) => {
+// Back: a blue arrow nudging left.
+icon("inv_back", (g, t) => {
+  const d = -5 * Math.max(0, wave(t, 2));
+  g.translate(d, 0);
+  line(g, 9, blue(g));
+  path2(g, [[80, 50], [22, 50]]);
+  g.stroke();
+  line(g, 9, gold(g, 24, 76));
+  path2(g, [[44, 28], [22, 50], [44, 72]]);
+  g.stroke();
+}, { glints: false });
+
+// ------------------------------------------------------------ replies & extras
+// Video: a blue frame, a gold play mark that pulses.
+icon("video", (g, t) => {
+  line(g, 7, blue(g, 20, 80));
   g.beginPath();
-  g.roundRect(25, 21, 50, 62, 9);
+  g.roundRect(10, 22, 80, 56, 10);
+  g.stroke();
+  const k = 1 + 0.14 * Math.max(0, wave(t, 2));
+  g.translate(52, 50);
+  g.scale(k, k);
+  g.fillStyle = gold(g, -14, 14);
+  path2(g, [[-10, -14], [14, 0], [-10, 14]]);
+  g.closePath();
   g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#4F3BC4";
+});
+
+// Failed: a red ring, the cross drawn in, then a shake.
+icon("fail", (g, t) => {
+  const shake = t > 0.35 && t < 0.6 ? wave(t, 10) * 3 : 0;
+  g.translate(shake, 0);
+  line(g, 7, grad(g, RED));
   g.beginPath();
-  g.roundRect(38, 15, 24, 12, 4);
-  g.fill();
-  g.strokeStyle = "#4F3BC4";
-  g.lineWidth = 5;
-  for (const y of [42, 54, 66]) {
-    g.beginPath();
-    g.moveTo(34, y);
-    g.lineTo(66, y);
+  g.arc(50, 50, 38, 0, TAU);
+  g.stroke();
+  const p = ease(t / 0.3);
+  line(g, 8, grad(g, RED, 30, 70));
+  path2(g, [[36, 36], [36 + 28 * Math.min(1, p * 2), 36 + 28 * Math.min(1, p * 2)]]);
+  g.stroke();
+  if (p > 0.5) {
+    const q = (p - 0.5) * 2;
+    path2(g, [[64, 36], [64 - 28 * q, 36 + 28 * q]]);
     g.stroke();
   }
+}, { still: 0.8, glints: false });
+
+// Fire: a gold flame that flickers.
+icon("fire", (g, t) => {
+  const f = (k) => wave(t, 3, k);
+  const flame = (s, style, sway) => {
+    g.fillStyle = style;
+    g.beginPath();
+    g.moveTo(50, 90);
+    g.bezierCurveTo(50 - 30 * s, 90, 50 - 32 * s, 60, 50 - 15 * s, 44);
+    g.bezierCurveTo(50 - 13 * s, 56, 50 - 4 * s, 58, 50 - 4 * s, 58);
+    g.bezierCurveTo(50 - 10 * s + sway, 36, 50 + sway, 20, 50 + 6 * s + sway, 10 + 4 * (1 - s));
+    g.bezierCurveTo(50 + 12 * s, 34, 50 + 32 * s, 48, 50 + 30 * s, 66);
+    g.bezierCurveTo(50 + 30 * s, 80, 50 + 19 * s, 90, 50, 90);
+    g.fill();
+  };
+  flame(1 + 0.04 * f(0), grad(g, ["#FFD66B", "#F59E0B", "#EA580C"]), 3 * f(0.2));
+  flame(0.55 + 0.05 * f(0.5), grad(g, ["#FFF7D1", "#FFE08A"], 50, 90), 2 * f(0.7));
 });
 
-tile("inv_shop", ["#F9A8D4", "#BE185D"], (g) => {
-  g.fillRect(25, 50, 50, 31);
+// Star: a gold star that sways and glints.
+icon("star", (g, t) => {
+  g.translate(50, 52);
+  g.rotate(0.25 * wave(t));
+  const k = 1 + 0.06 * wave(t, 2);
+  g.scale(k, k);
   g.beginPath();
-  g.moveTo(16, 48);
-  g.lineTo(25, 22);
-  g.lineTo(75, 22);
-  g.lineTo(84, 48);
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 16 : 38;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  g.closePath();
+  g.fillStyle = gold(g, -38, 34);
+  g.fill();
+  line(g, 4, "rgba(255,255,255,0.55)");
+  g.stroke();
+});
+
+// Rocket: blue outline, gold flame, rising.
+icon("rocket", (g, t) => {
+  g.translate(50, 50 + 3 * wave(t));
+  g.rotate(Math.PI / 4);
+  const fl = 0.75 + 0.25 * wave(t, 6);
+  g.fillStyle = gold(g, 20, 44);
+  path2(g, [[-8, 24], [0, 24 + 20 * fl], [8, 24]]);
   g.closePath();
   g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#BE185D";
-  for (const x of [33, 50, 67]) {
-    g.beginPath();
-    g.arc(x, 48, 8.5, 0, Math.PI);
-    g.fill();
-  }
-  g.fillRect(44, 61, 12, 20);
+  line(g, 6, blue(g, -36, 26));
+  g.beginPath();
+  g.moveTo(0, -36);
+  g.bezierCurveTo(17, -22, 15, 8, 12, 24);
+  g.lineTo(-12, 24);
+  g.bezierCurveTo(-15, 8, -17, -22, 0, -36);
+  g.stroke();
+  path2(g, [[-12, 8], [-24, 26], [-12, 22]]);
+  g.stroke();
+  path2(g, [[12, 8], [24, 26], [12, 22]]);
+  g.stroke();
+  g.fillStyle = gold(g, -16, 0);
+  g.beginPath();
+  g.arc(0, -8, 6, 0, TAU);
+  g.fill();
 });
 
-tile("inv_back", ["#CBD5E1", "#475569"], (g) => {
-  g.lineWidth = 12;
+// Gift: a blue box, gold ribbon, the lid hops.
+icon("gift", (g, t) => {
+  const hop = 7 * Math.max(0, wave(t, 2));
+  line(g, 7, blue(g, 44, 90));
   g.beginPath();
-  g.moveTo(76, 50);
-  g.lineTo(28, 50);
+  g.roundRect(20, 48, 60, 38, 5);
   g.stroke();
+  g.save();
+  g.translate(0, -hop);
+  line(g, 7, blue(g, 30, 50));
   g.beginPath();
-  g.moveTo(47, 29);
-  g.lineTo(26, 50);
-  g.lineTo(47, 71);
+  g.roundRect(14, 32, 72, 16, 5);
+  g.stroke();
+  line(g, 6, gold(g, 10, 40));
+  g.beginPath();
+  g.moveTo(50, 32); g.bezierCurveTo(40, 12, 24, 22, 38, 31);
+  g.moveTo(50, 32); g.bezierCurveTo(60, 12, 76, 22, 62, 31);
+  g.stroke();
+  path2(g, [[50, 32], [50, 48]]);
+  g.stroke();
+  g.restore();
+  line(g, 6, gold(g, 48, 90));
+  path2(g, [[50, 50], [50, 86]]);
   g.stroke();
 });
+
+// Music: blue stems and beam, gold heads, bouncing in turn.
+icon("music", (g, t) => {
+  const a = -5 * Math.max(0, wave(t, 2));
+  const b = -5 * Math.max(0, wave(t, 2, 0.5));
+  line(g, 6, blue(g));
+  path2(g, [[38, 70 + a], [38, 24 + a]]);
+  g.stroke();
+  path2(g, [[74, 64 + b], [74, 18 + b]]);
+  g.stroke();
+  g.fillStyle = blue(g, 10, 40);
+  g.beginPath();
+  g.moveTo(38, 22 + a); g.lineTo(74, 14 + b); g.lineTo(74, 26 + b); g.lineTo(38, 34 + a); g.closePath();
+  g.fill();
+  g.fillStyle = gold(g, 60, 84);
+  g.beginPath(); g.ellipse(29, 72 + a, 11, 9, -0.35, 0, TAU); g.fill();
+  g.beginPath(); g.ellipse(65, 66 + b, 11, 9, -0.35, 0, TAU); g.fill();
+});
+
+// Heart: a rose-red heart that beats.
+icon("heart", (g, t) => {
+  const p = Math.max(0, Math.sin(TAU * t * 2)) ** 3;
+  const k = 1 + 0.12 * p;
+  g.translate(50, 52);
+  g.scale(k, k);
+  g.translate(-50, -52);
+  g.fillStyle = grad(g, PINK, 20, 86);
+  g.beginPath();
+  g.moveTo(50, 86);
+  g.bezierCurveTo(10, 60, 12, 20, 35, 20);
+  g.bezierCurveTo(44, 20, 50, 28, 50, 34);
+  g.bezierCurveTo(50, 28, 56, 20, 65, 20);
+  g.bezierCurveTo(88, 20, 90, 60, 50, 86);
+  g.fill();
+});
+
+// Link: blue and gold chain links that close.
+icon("link", (g, t) => {
+  const gap = 6 * (1 - ease(t / 0.4)) * (t < 0.9 ? 1 : 0);
+  g.translate(50, 50);
+  g.rotate(-Math.PI / 4);
+  line(g, 8, blue(g, -12, 12));
+  g.beginPath();
+  g.roundRect(-38 - gap, -12, 42, 24, 12);
+  g.stroke();
+  line(g, 8, gold(g, -12, 12));
+  g.beginPath();
+  g.roundRect(-4 + gap, -12, 42, 24, 12);
+  g.stroke();
+}, { still: 0.6 });
+
+// Lock: a gold shackle that clicks shut on a blue body.
+icon("lock", (g, t) => {
+  const up = 9 * (1 - ease((t - 0.25) / 0.2));
+  line(g, 8, gold(g, 10, 50));
+  g.beginPath();
+  g.moveTo(32, 46 - up);
+  g.lineTo(32, 34 - up);
+  g.arc(50, 34 - up, 18, Math.PI, 0);
+  g.lineTo(68, 46 - up);
+  g.stroke();
+  line(g, 7, blue(g, 44, 90));
+  g.beginPath();
+  g.roundRect(20, 46, 60, 42, 9);
+  g.stroke();
+  g.fillStyle = gold(g, 56, 80);
+  g.beginPath();
+  g.arc(50, 62, 6, 0, TAU);
+  g.fill();
+  g.fillRect(47, 62, 6, 13);
+}, { still: 0.8 });
 
 // ------------------------------------------------------------ platforms
 /** A soft heartbeat about the tile's centre (two quick pulses per loop). */
@@ -440,14 +930,14 @@ function beat(g, t, amount = 0.07) {
   g.scale(k, k);
   g.translate(-50, -50);
 }
-tile("facebook", ["#3B8BFF", "#0B5CD5"], (g, t) => {
+tiled("facebook", ["#3B8BFF", "#0B5CD5"], (g, t) => {
   beat(g, t);
   g.font = "800 94px Inter";
   g.textAlign = "center";
   g.fillText("f", 58, 106);
 }, { animate: true });
 
-tile("youtube", ["#FF4B4B", "#CC0000"], (g, t) => {
+tiled("youtube", ["#FF4B4B", "#CC0000"], (g, t) => {
   beat(g, t);
   g.beginPath();
   g.roundRect(15, 27, 70, 46, 14);
@@ -462,7 +952,7 @@ tile("youtube", ["#FF4B4B", "#CC0000"], (g, t) => {
   g.fill();
 }, { animate: true });
 
-tile("instagram", ["#F58529", "#8134AF"], (g, t) => {
+tiled("instagram", ["#F58529", "#8134AF"], (g, t) => {
   beat(g, t);
   g.lineWidth = 7;
   g.beginPath();
@@ -476,7 +966,7 @@ tile("instagram", ["#F58529", "#8134AF"], (g, t) => {
   g.fill();
 }, { animate: true });
 
-tile("twitter", ["#3A3A3A", "#000000"], (g, t) => {
+tiled("twitter", ["#3A3A3A", "#000000"], (g, t) => {
   beat(g, t);
   g.beginPath();
   g.moveTo(25, 23);
@@ -494,7 +984,7 @@ tile("twitter", ["#3A3A3A", "#000000"], (g, t) => {
   g.fill();
 }, { dark: true, animate: true });
 
-tile("tiktok", ["#2A2A2A", "#000000"], (g, t) => {
+tiled("tiktok", ["#2A2A2A", "#000000"], (g, t) => {
   beat(g, t);
   g.shadowColor = "transparent";
   const note = (dx, dy, colour) => {
@@ -518,739 +1008,29 @@ tile("tiktok", ["#2A2A2A", "#000000"], (g, t) => {
   note(0, 0, "#FFFFFF");
 }, { dark: true, animate: true });
 
-// ------------------------------------------------------------ illustrations
-// Flat, outlined drawings (the style the operator picked) on a white tile.
-const INK = "#2F3441";
-const WHITE_TILE = ["#FFFFFF", "#E3E9F1"];
-
-function gear(g, cx, cy, rOuter, rBody, teeth, fillL, fillR, hole, rot = 0) {
-  g.save();
-  g.beginPath();
-  for (let i = 0; i < teeth; i++) {
-    const a = (i / teeth) * Math.PI * 2 + rot;
-    const w = (Math.PI * 2) / teeth / 4;
-    g.lineTo(cx + Math.cos(a - w * 1.4) * rBody, cy + Math.sin(a - w * 1.4) * rBody);
-    g.lineTo(cx + Math.cos(a - w) * rOuter, cy + Math.sin(a - w) * rOuter);
-    g.lineTo(cx + Math.cos(a + w) * rOuter, cy + Math.sin(a + w) * rOuter);
-    g.lineTo(cx + Math.cos(a + w * 1.4) * rBody, cy + Math.sin(a + w * 1.4) * rBody);
-  }
-  g.closePath();
-  g.save();
-  g.clip();
-  g.fillStyle = fillL;
-  g.fillRect(cx - rOuter - 2, cy - rOuter - 2, rOuter + 2, rOuter * 2 + 4);
-  g.fillStyle = fillR;
-  g.fillRect(cx, cy - rOuter - 2, rOuter + 2, rOuter * 2 + 4);
-  g.restore();
-  g.stroke();
-  g.fillStyle = hole;
-  g.beginPath();
-  g.arc(cx, cy, rBody * 0.42, 0, Math.PI * 2);
-  g.fill();
-  if (hole === "#FFFFFF") g.stroke();
-  g.restore();
-}
-
-// Account: business person with a gear for a head.
-tile("m_account", WHITE_TILE, (g, t) => {
-  g.shadowColor = "transparent";
-  g.strokeStyle = INK;
-  g.lineWidth = 3;
-  // suit
-  g.fillStyle = "#C3CAD4";
-  g.beginPath();
-  g.moveTo(10, 98);
-  g.lineTo(12, 80);
-  g.quadraticCurveTo(14, 68, 32, 64);
-  g.lineTo(68, 64);
-  g.quadraticCurveTo(86, 68, 88, 80);
-  g.lineTo(90, 98);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // shirt
-  g.fillStyle = "#C4B5FD";
-  g.beginPath();
-  g.moveTo(36, 64);
-  g.lineTo(50, 84);
-  g.lineTo(64, 64);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // tie
-  g.fillStyle = "#FFFFFF";
-  g.beginPath();
-  g.moveTo(47, 72);
-  g.lineTo(53, 72);
-  g.lineTo(55, 90);
-  g.lineTo(50, 95);
-  g.lineTo(45, 90);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // lapels
-  g.beginPath();
-  g.moveTo(34, 65);
-  g.lineTo(44, 96);
-  g.moveTo(66, 65);
-  g.lineTo(56, 96);
-  g.stroke();
-  // gear head
-  gear(g, 50, 34, 25, 18, 8, "#FCD34D", "#F59E0B", INK, (t * TAU) / 8);
-}, { animate: true, sweep: false });
-
-// Help: support agent with a headset, a gear and a wrench beside.
-tile("m_help", WHITE_TILE, (g, t) => {
-  g.shadowColor = "transparent";
-  const LINE = "#2B7FD4";
-  const FILL = "#CFE5FB";
-  g.strokeStyle = LINE;
-  g.fillStyle = FILL;
-  g.lineWidth = 3.5;
-  // gear + wrench (behind)
-  gear(g, 72, 64, 17, 12, 8, FILL, FILL, "#FFFFFF", -(t * TAU) / 8);
-  g.strokeStyle = LINE;
-  g.fillStyle = FILL;
-  // wrench: handle, then a round head with an open jaw
-  g.beginPath();
-  g.roundRect(68, 26, 8, 26, 3);
-  g.fill();
-  g.stroke();
-  g.beginPath();
-  g.arc(72, 20, 11, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-  g.fillStyle = "#FFFFFF";
-  g.beginPath();
-  g.moveTo(66, 4);
-  g.lineTo(78, 4);
-  g.lineTo(76, 19);
-  g.lineTo(68, 19);
-  g.closePath();
-  g.fill();
-  g.beginPath();
-  g.moveTo(66, 10);
-  g.lineTo(68, 19);
-  g.lineTo(76, 19);
-  g.lineTo(78, 10);
-  g.stroke();
-  g.fillStyle = FILL;
-  // body
-  g.beginPath();
-  g.moveTo(8, 98);
-  g.lineTo(9, 84);
-  g.quadraticCurveTo(12, 70, 30, 67);
-  g.lineTo(46, 67);
-  g.quadraticCurveTo(64, 70, 66, 84);
-  g.lineTo(66, 98);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // head
-  g.beginPath();
-  g.arc(37, 44, 16, 0, Math.PI * 2);
-  g.fillStyle = "#FFFFFF";
-  g.fill();
-  g.stroke();
-  // hair
-  g.fillStyle = FILL;
-  g.beginPath();
-  g.moveTo(21, 42);
-  g.quadraticCurveTo(22, 27, 37, 27);
-  g.quadraticCurveTo(52, 27, 53, 42);
-  g.quadraticCurveTo(45, 34, 36, 38);
-  g.quadraticCurveTo(28, 40, 21, 42);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // eyes
-  g.fillStyle = LINE;
-  g.fillRect(30, 45, 3.5, 3.5);
-  g.fillRect(41, 45, 3.5, 3.5);
-  // headset
-  g.beginPath();
-  g.arc(37, 44, 21, Math.PI * 1.05, Math.PI * 1.95);
-  g.stroke();
-  g.fillStyle = FILL;
-  for (const x of [13, 55]) {
-    g.beginPath();
-    g.roundRect(x, 38, 7, 14, 3);
-    g.fill();
-    g.stroke();
-  }
-  g.beginPath();
-  g.moveTo(57, 52);
-  g.quadraticCurveTo(56, 60, 44, 58);
-  g.stroke();
-}, { animate: true, sweep: false });
-
-// Income: an open hand receiving a coin (it drops in, settles, fades, again).
-tile("inv_in", WHITE_TILE, (g, t) => {
-  g.shadowColor = "transparent";
-  g.strokeStyle = INK;
-  g.lineWidth = 3.5;
-  // coin
-  const fall = Math.min(1, t / 0.4);
-  const bounce = fall < 1 ? 1 - (1 - fall) ** 2 : 1 + 0.06 * Math.sin(TAU * Math.min(1, (t - 0.4) / 0.2)) * (t < 0.6 ? 1 : 0);
-  g.save();
-  g.globalAlpha = t > 0.85 ? 1 - (t - 0.85) / 0.15 : Math.min(1, t / 0.12 + 0.2);
-  g.translate(0, -18 * (1 - bounce));
-  g.fillStyle = "#FCD776";
-  g.beginPath();
-  g.arc(58, 27, 17, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-  g.fillStyle = INK;
-  g.font = "800 22px Inter";
-  g.textAlign = "center";
-  g.fillText("$", 58, 35);
-  g.restore();
-  // hand
-  g.fillStyle = "#F9C4AE";
-  g.beginPath();
-  g.moveTo(30, 66);
-  g.bezierCurveTo(44, 58, 62, 62, 78, 54);
-  g.bezierCurveTo(86, 50, 92, 58, 86, 63);
-  g.bezierCurveTo(74, 74, 54, 82, 36, 84);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  g.beginPath();
-  g.moveTo(50, 70);
-  g.lineTo(66, 68);
-  g.stroke();
-  // cuff
-  g.save();
-  g.translate(24, 78);
-  g.rotate(-0.62);
-  g.fillStyle = "#7DD3E8";
-  g.beginPath();
-  g.roundRect(-10, -14, 20, 30, 3);
-  g.fill();
-  g.stroke();
-  g.restore();
-}, { animate: true, sweep: false, still: 0.6 });
-
-// Expense: one hand handing a banknote over to another.
-tile("inv_out", WHITE_TILE, (g, t) => {
-  g.shadowColor = "transparent";
-  const HAND = "#3B9AD9";
-  // lower, receiving hand
-  g.fillStyle = HAND;
-  g.beginPath();
-  g.moveTo(24, 70);
-  g.bezierCurveTo(40, 64, 60, 70, 76, 62);
-  g.bezierCurveTo(84, 58, 88, 66, 82, 70);
-  g.bezierCurveTo(70, 80, 50, 84, 30, 84);
-  g.closePath();
-  g.fill();
-  g.fillRect(12, 70, 14, 16);
-  // banknote, passing from the upper hand down to the lower one
-  const pass = 0.5 - 0.5 * Math.cos(TAU * t);
-  g.save();
-  g.translate(50 + 10 * pass, 34 + 18 * pass);
-  g.rotate(-0.45 + 0.3 * pass);
-  g.fillStyle = "#4ADE80";
-  g.strokeStyle = "#15803D";
-  g.lineWidth = 2.5;
-  g.beginPath();
-  g.roundRect(-20, -12, 40, 24, 3);
-  g.fill();
-  g.stroke();
-  g.beginPath();
-  g.arc(0, 0, 7, 0, Math.PI * 2);
-  g.stroke();
-  g.restore();
-  // upper, giving hand
-  g.fillStyle = HAND;
-  g.beginPath();
-  g.moveTo(16, 30);
-  g.bezierCurveTo(28, 26, 40, 30, 48, 36);
-  g.bezierCurveTo(52, 40, 48, 46, 42, 44);
-  g.bezierCurveTo(34, 42, 26, 44, 18, 46);
-  g.closePath();
-  g.fill();
-  g.fillRect(6, 28, 12, 20);
-}, { animate: true, sweep: false });
-
-// Create invoice: a bill with a checklist, a dollar sign and a pen that writes.
-tile("inv_create", WHITE_TILE, (g, t) => {
-  g.shadowColor = "transparent";
-  const TEAL = "#16706A";
-  g.strokeStyle = TEAL;
-  g.lineWidth = 3.5;
-  // paper with folded corner
-  g.fillStyle = "#E3F6EE";
-  g.beginPath();
-  g.moveTo(20, 16);
-  g.lineTo(58, 16);
-  g.lineTo(70, 28);
-  g.lineTo(70, 86);
-  g.lineTo(20, 86);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  g.fillStyle = "#A7E3C9";
-  g.beginPath();
-  g.moveTo(58, 16);
-  g.lineTo(58, 28);
-  g.lineTo(70, 28);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  // checklist
-  g.lineWidth = 3;
-  for (const y of [30, 46, 62]) {
-    g.strokeRect(27, y - 5, 9, 9);
-    g.beginPath();
-    g.moveTo(42, y);
-    g.lineTo(56, y);
-    g.stroke();
-  }
-  g.fillStyle = TEAL;
-  g.font = "800 15px Inter";
-  g.textAlign = "center";
-  g.fillText("$", 47, 81);
-  // pen
-  g.save();
-  g.translate(74 + 3 * Math.sin(TAU * t * 3), 58 + 2 * Math.cos(TAU * t * 3));
-  g.rotate(0.55);
-  g.fillStyle = "#86EFAC";
-  g.lineWidth = 3;
-  g.beginPath();
-  g.roundRect(-6, -30, 12, 44, 3);
-  g.fill();
-  g.stroke();
-  g.fillStyle = "#FDE68A";
-  g.beginPath();
-  g.moveTo(-6, 14);
-  g.lineTo(6, 14);
-  g.lineTo(0, 26);
-  g.closePath();
-  g.fill();
-  g.stroke();
-  g.restore();
-}, { animate: true, sweep: false });
-
-// ------------------------------------------------------------ brand
-const easeOutBounce = (x) => {
-  const n = 7.5625, d = 2.75;
-  if (x < 1 / d) return n * x * x;
-  if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
-  if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
-  return n * (x -= 2.625 / d) * x + 0.984375;
-};
-
-/** The SaveIt KH mark: a download arrow that drops into a gold tray. */
-function drawLogo(g, t) {
-  let drop = 0;
-  if (t < 0.45) drop = -18 * (1 - easeOutBounce(t / 0.45));
-  else if (t > 0.8) drop = -18 * ((t - 0.8) / 0.2) ** 2;
-  const landed = t >= 0.45 && t < 0.62 ? 1 - (t - 0.45) / 0.17 : 0;
-
-  g.save();
-  g.globalAlpha = t > 0.92 ? 1 - (t - 0.92) / 0.08 : t < 0.06 ? t / 0.06 : 1;
-  g.translate(0, drop);
-  const blue = g.createLinearGradient(0, 16, 0, 66);
-  blue.addColorStop(0, "#7CC8FF");
-  blue.addColorStop(1, "#2F80ED");
-  g.fillStyle = blue;
-  g.strokeStyle = blue;
-  g.beginPath();
-  g.roundRect(43, 16, 14, 30, 5);
-  g.fill();
-  g.lineWidth = 13;
-  g.beginPath();
-  g.moveTo(26, 40);
-  g.lineTo(50, 62);
-  g.lineTo(74, 40);
-  g.stroke();
-  g.restore();
-
-  // tray, flashing as the arrow lands
-  g.save();
-  g.shadowColor = `rgba(255,210,90,${0.35 + 0.65 * landed})`;
-  g.shadowBlur = 6 + 10 * landed;
-  const gold = g.createLinearGradient(0, 74, 0, 84);
-  gold.addColorStop(0, "#FFE08A");
-  gold.addColorStop(1, "#F2A51A");
-  g.fillStyle = gold;
-  g.beginPath();
-  g.roundRect(24, 74, 52, 9, 4.5);
-  g.fill();
-  g.restore();
-}
-
-tile("logo", ["#173A80", "#081A40"], drawLogo, { animate: true, sparkles: true, sweep: false, still: 0.6 });
-
-// The brand badge: "SaveIt" over a gold "KH".
-tile("brand", ["#2346A8", "#0B1638"], (g) => {
-  g.textAlign = "center";
-  g.font = "800 25px Inter";
-  g.fillText("SaveIt", 50, 45);
-  const gold = g.createLinearGradient(0, 52, 0, 84);
-  gold.addColorStop(0, "#FFE58F");
-  gold.addColorStop(1, "#F29F05");
-  g.fillStyle = gold;
-  g.font = "800 36px Inter";
-  g.fillText("KH", 50, 82);
-}, { animate: true, sparkles: true });
-
-// ADMIN: a white shield with a gold crown and a ribbon.
-tile("admin", ["#FCD34D", "#B45309"], (g) => {
-  g.beginPath();
-  g.moveTo(50, 12);
-  g.lineTo(80, 22);
-  g.lineTo(78, 50);
-  g.quadraticCurveTo(74, 74, 50, 86);
-  g.quadraticCurveTo(26, 74, 22, 50);
-  g.lineTo(20, 22);
-  g.closePath();
-  g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#F59E0B";
-  g.beginPath();
-  g.moveTo(32, 50);
-  g.lineTo(34, 30);
-  g.lineTo(42, 40);
-  g.lineTo(50, 26);
-  g.lineTo(58, 40);
-  g.lineTo(66, 30);
-  g.lineTo(68, 50);
-  g.closePath();
-  g.fill();
-  g.fillStyle = "#B91C1C";
-  g.beginPath();
-  g.roundRect(12, 56, 76, 18, 5);
-  g.fill();
-  g.fillStyle = "#FFFFFF";
-  g.font = "800 14px Inter";
-  g.textAlign = "center";
-  g.fillText("ADMIN", 50, 70);
-}, { animate: true, sparkles: true });
-
-// ------------------------------------------------------------ status & extras
-// Moving icons for the bot's replies: diamond, sparkle, video, done, failed,
-// waiting, download, fire, star, rocket, gift, music, heart, link, lock.
-const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, x)));
-
-// A cut diamond that turns, light running over its facets.
-tile("diamond", ["#6D5BFF", "#1E1466"], (g, t) => {
-  const bob = Math.sin(TAU * t) * 3;
-  const turn = Math.sin(TAU * t); // -1..1: which side faces us
-  g.translate(50, 52 + bob);
-  const facet = (pts, colour) => {
-    g.fillStyle = colour;
-    g.beginPath();
-    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-    g.closePath();
-    g.fill();
-  };
-  const w = 36;
-  const mid = turn * 10; // the centre line of the crown moves as it turns
-  const top = -22, girdle = -8, tip = 32;
-  const light = (k) => `hsl(${190 + 20 * k}, 100%, ${62 + 22 * k}%)`;
-  facet([[-w, girdle], [-w + 12, top], [mid, top], [mid - 6, girdle]], light(0.9 - 0.4 * turn));
-  facet([[mid - 6, girdle], [mid, top], [w - 12, top], [w, girdle]], light(0.5 + 0.4 * turn));
-  facet([[-w, girdle], [mid - 6, girdle], [0, tip]], "hsl(205, 95%, 55%)");
-  g.shadowColor = "transparent";
-  facet([[mid - 6, girdle], [w, girdle], [0, tip]], "hsl(215, 90%, 42%)");
-  facet([[-w + 12, top], [mid, top], [mid - 6, girdle], [-w, girdle]], "rgba(255,255,255,0.18)");
-  g.strokeStyle = "rgba(255,255,255,0.85)";
-  g.lineWidth = 1.6;
-  g.beginPath();
-  g.moveTo(-w, girdle); g.lineTo(-w + 12, top); g.lineTo(w - 12, top); g.lineTo(w, girdle); g.lineTo(0, tip); g.closePath();
-  g.moveTo(-w, girdle); g.lineTo(w, girdle);
-  g.moveTo(mid, top); g.lineTo(mid - 6, girdle); g.lineTo(0, tip);
-  g.stroke();
-}, { animate: true, sparkles: true });
-
-// A big four-point sparkle that turns and breathes, with two small ones.
-tile("sparkle", ["#F472B6", "#7E22CE"], (g, t) => {
-  g.shadowColor = "rgba(255,255,255,0.8)";
-  g.shadowBlur = 8;
-  g.save();
-  g.translate(46, 54);
-  g.rotate(TAU * t * 0.25);
-  sparkle(g, 0, 0, 27 * (0.85 + 0.15 * Math.sin(TAU * t * 2)));
-  g.restore();
-  sparkle(g, 78, 26, 9 * twinkle(t, 0.3));
-  sparkle(g, 24, 22, 6 * twinkle(t, 0.7));
-}, { animate: true, sweep: false });
-
-// A film screen whose play button pulses.
-tile("video", ["#FB923C", "#C2410C"], (g, t) => {
-  g.beginPath();
-  g.roundRect(14, 24, 72, 52, 12);
-  g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#C2410C";
-  for (let i = 0; i < 5; i++) {
-    g.fillRect(20 + i * 14, 28, 7, 5);
-    g.fillRect(20 + i * 14, 67, 7, 5);
-  }
-  const k = 1 + 0.12 * Math.max(0, Math.sin(TAU * t * 2));
-  g.translate(51, 50);
-  g.scale(k, k);
-  g.fillStyle = "#EA580C";
-  g.beginPath();
-  g.moveTo(-8, -11);
-  g.lineTo(12, 0);
-  g.lineTo(-8, 11);
-  g.closePath();
-  g.fill();
-}, { animate: true });
-
-// A tick that draws itself, then holds.
-tile("ok", ["#4ADE80", "#15803D"], (g, t) => {
-  const p = ease(t / 0.45);
-  g.lineWidth = 12;
-  const pts = [[27, 52], [43, 68], [74, 34]];
-  const l1 = Math.hypot(16, 16), l2 = Math.hypot(31, 34);
-  let left = p * (l1 + l2);
-  g.beginPath();
-  g.moveTo(...pts[0]);
-  const a = Math.min(1, left / l1);
-  g.lineTo(27 + 16 * a, 52 + 16 * a);
-  left -= l1;
-  if (left > 0) {
-    const b = Math.min(1, left / l2);
-    g.lineTo(43 + 31 * b, 68 - 34 * b);
-  }
-  g.stroke();
-}, { animate: true, still: 0.9 });
-
-// A cross that shakes.
-tile("fail", ["#F87171", "#B91C1C"], (g, t) => {
-  const shake = Math.sin(TAU * t * 6) * 4 * Math.max(0, 1 - t * 2.5);
-  g.translate(shake, 0);
-  g.lineWidth = 12;
-  g.beginPath();
-  g.moveTo(31, 31); g.lineTo(69, 69);
-  g.moveTo(69, 31); g.lineTo(31, 69);
-  g.stroke();
-}, { animate: true, sweep: false });
-
-// An hourglass: sand runs down, then it turns over.
-tile("wait", ["#FCD34D", "#C27A12"], (g, t) => {
-  const flip = ease((t - 0.8) / 0.2);
-  g.translate(50, 50);
-  g.rotate(Math.PI * flip);
-  g.lineWidth = 5;
-  g.beginPath();
-  g.moveTo(-20, -30); g.lineTo(20, -30);
-  g.moveTo(-20, 30); g.lineTo(20, 30);
-  g.stroke();
-  g.lineWidth = 4;
-  g.beginPath();
-  g.moveTo(-16, -30); g.quadraticCurveTo(-16, -8, 0, 0); g.quadraticCurveTo(-16, 8, -16, 30);
-  g.moveTo(16, -30); g.quadraticCurveTo(16, -8, 0, 0); g.quadraticCurveTo(16, 8, 16, 30);
-  g.stroke();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#FFF7D6";
-  const run = Math.min(1, t / 0.8);
-  const topH = 22 * (1 - run);
-  g.beginPath(); // sand above, sinking
-  g.moveTo(-12 * (topH / 22), -4 - topH); g.lineTo(12 * (topH / 22), -4 - topH); g.lineTo(0, -2); g.closePath();
-  g.fill();
-  const botH = 22 * run;
-  g.beginPath(); // the pile below
-  g.moveTo(-14, 28); g.lineTo(14, 28); g.lineTo(0, 28 - botH); g.closePath();
-  g.fill();
-  if (run < 1) g.fillRect(-1, -2, 2, 30 - botH);
-}, { animate: true, sweep: false, still: 0.45 });
-
-// An arrow that drops into a tray.
-tile("dl", ["#60A5FA", "#1D4ED8"], (g, t) => {
-  const y = -14 + 16 * ease((t % 0.5) / 0.5);
-  g.lineWidth = 10;
-  g.beginPath();
-  g.moveTo(50, 20 + y); g.lineTo(50, 54 + y);
-  g.moveTo(35, 40 + y); g.lineTo(50, 55 + y); g.lineTo(65, 40 + y);
-  g.stroke();
-  g.lineWidth = 8;
-  g.beginPath();
-  g.moveTo(24, 62); g.lineTo(24, 76); g.lineTo(76, 76); g.lineTo(76, 62);
-  g.stroke();
-}, { animate: true });
-
-// A flame that flickers.
-tile("fire", ["#FDBA74", "#DC2626"], (g, t) => {
-  const f = (k) => Math.sin(TAU * (t * 3 + k));
-  const flame = (s, colour, sway) => {
-    g.fillStyle = colour;
-    g.beginPath();
-    g.moveTo(50, 86);
-    g.bezierCurveTo(50 - 28 * s, 86, 50 - 30 * s, 58, 50 - 14 * s, 44);
-    g.bezierCurveTo(50 - 12 * s, 56, 50 - 4 * s, 58, 50 - 4 * s, 58);
-    g.bezierCurveTo(50 - 10 * s + sway, 36, 50 + sway, 22, 50 + 6 * s + sway, 12 + 4 * (1 - s));
-    g.bezierCurveTo(50 + 12 * s, 34, 50 + 30 * s, 48, 50 + 28 * s, 64);
-    g.bezierCurveTo(50 + 28 * s, 78, 50 + 18 * s, 86, 50, 86);
-    g.fill();
-  };
-  flame(1 + 0.04 * f(0), "#FFFFFF", 3 * f(0.2));
-  g.shadowColor = "transparent";
-  flame(0.62 + 0.05 * f(0.5), "#FDE047", 3 * f(0.7));
-  flame(0.3 + 0.04 * f(0.3), "#FB923C", 2 * f(0.1));
-}, { animate: true, sweep: false });
-
-// A star that turns and glints.
-tile("star", ["#FDE68A", "#D97706"], (g, t) => {
-  g.translate(50, 52);
-  g.rotate(Math.sin(TAU * t) * 0.3);
-  const k = 1 + 0.06 * Math.sin(TAU * t * 2);
-  g.scale(k, k);
-  g.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 ? 14 : 34;
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-  }
-  g.closePath();
-  g.lineJoin = "round";
-  g.lineWidth = 5;
-  g.fill();
-  g.stroke();
-}, { animate: true, sparkles: true });
-
-// A rocket lifting off, flame trembling.
-tile("rocket", ["#818CF8", "#3730A3"], (g, t) => {
-  const lift = Math.sin(TAU * t) * 4;
-  g.translate(50, 50 + lift);
-  g.rotate(Math.PI / 4);
-  g.shadowColor = "transparent";
-  const flick = 0.8 + 0.2 * Math.sin(TAU * t * 6);
-  g.fillStyle = "#FDBA74";
-  g.beginPath(); g.moveTo(-7, 22); g.lineTo(0, 22 + 18 * flick); g.lineTo(7, 22); g.closePath(); g.fill();
-  g.fillStyle = "#FDE047";
-  g.beginPath(); g.moveTo(-4, 22); g.lineTo(0, 22 + 10 * flick); g.lineTo(4, 22); g.closePath(); g.fill();
-  g.fillStyle = "#FFFFFF";
-  g.beginPath();
-  g.moveTo(0, -34);
-  g.bezierCurveTo(16, -22, 14, 8, 11, 22);
-  g.lineTo(-11, 22);
-  g.bezierCurveTo(-14, 8, -16, -22, 0, -34);
-  g.fill();
-  g.fillStyle = "#F43F5E";
-  g.beginPath(); g.moveTo(-11, 6); g.lineTo(-22, 24); g.lineTo(-10, 20); g.closePath(); g.fill();
-  g.beginPath(); g.moveTo(11, 6); g.lineTo(22, 24); g.lineTo(10, 20); g.closePath(); g.fill();
-  g.fillStyle = "#38BDF8";
-  g.beginPath(); g.arc(0, -8, 6.5, 0, TAU); g.fill();
-  g.strokeStyle = "#3730A3"; g.lineWidth = 2; g.stroke();
-}, { animate: true, sparkles: true, sweep: false });
-
-// A gift whose lid hops.
-tile("gift", ["#F9A8D4", "#BE185D"], (g, t) => {
-  const hop = Math.max(0, Math.sin(TAU * t * 2)) * 7;
-  g.beginPath();
-  g.roundRect(22, 48, 56, 36, 5);
-  g.fill();
-  g.save();
-  g.translate(0, -hop);
-  g.beginPath();
-  g.roundRect(17, 34, 66, 15, 5);
-  g.fill();
-  g.lineWidth = 5;
-  g.beginPath();
-  g.moveTo(50, 34); g.bezierCurveTo(40, 16, 26, 26, 38, 33);
-  g.moveTo(50, 34); g.bezierCurveTo(60, 16, 74, 26, 62, 33);
-  g.stroke();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#EC4899";
-  g.fillRect(45, 34, 10, 15);
-  g.restore();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#EC4899";
-  g.fillRect(45, 48, 10, 36);
-}, { animate: true, sparkles: true });
-
-// Two notes bouncing in turn.
-tile("music", ["#C084FC", "#7E22CE"], (g, t) => {
-  const a = Math.max(0, Math.sin(TAU * t * 2)) * -5;
-  const b = Math.max(0, Math.sin(TAU * t * 2 + Math.PI)) * -5;
-  g.lineWidth = 6;
-  g.beginPath();
-  g.moveTo(40, 64 + a); g.lineTo(40, 26 + a);
-  g.moveTo(72, 58 + b); g.lineTo(72, 20 + b);
-  g.stroke();
-  g.lineWidth = 9;
-  g.beginPath();
-  g.moveTo(40, 30 + a); g.lineTo(72, 24 + b);
-  g.stroke();
-  g.beginPath(); g.ellipse(31, 66 + a, 11, 8.5, -0.4, 0, TAU); g.fill();
-  g.beginPath(); g.ellipse(63, 60 + b, 11, 8.5, -0.4, 0, TAU); g.fill();
-}, { animate: true });
-
-// A heart that beats.
-tile("heart", ["#FB7185", "#BE123C"], (g, t) => {
-  beat(g, t, 0.14);
-  g.beginPath();
-  g.moveTo(50, 82);
-  g.bezierCurveTo(12, 58, 14, 24, 36, 24);
-  g.bezierCurveTo(44, 24, 50, 32, 50, 36);
-  g.bezierCurveTo(50, 32, 56, 24, 64, 24);
-  g.bezierCurveTo(86, 24, 88, 58, 50, 82);
-  g.fill();
-}, { animate: true, sparkles: true });
-
-// Two chain links that close.
-tile("link", ["#94A3B8", "#334155"], (g, t) => {
-  const gap = 6 * (1 - ease(t / 0.4)) * (t < 0.9 ? 1 : 0);
-  g.lineWidth = 9;
-  g.save();
-  g.translate(50, 50);
-  g.rotate(-Math.PI / 4);
-  g.beginPath(); g.roundRect(-34 - gap, -11, 38, 22, 11); g.stroke();
-  g.beginPath(); g.roundRect(-4 + gap, -11, 38, 22, 11); g.stroke();
-  g.restore();
-}, { animate: true, still: 0.6 });
-
-// A padlock that clicks shut.
-tile("lock", ["#5EEAD4", "#0F766E"], (g, t) => {
-  const up = 8 * (1 - ease((t - 0.3) / 0.2));
-  g.lineWidth = 8;
-  g.beginPath();
-  g.moveTo(34, 48 - up); g.lineTo(34, 36 - up);
-  g.arc(50, 36 - up, 16, Math.PI, 0);
-  g.lineTo(66, 48 - up);
-  g.stroke();
-  g.beginPath();
-  g.roundRect(24, 46, 52, 38, 8);
-  g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = "#0F766E";
-  g.beginPath(); g.arc(50, 61, 5, 0, TAU); g.fill();
-  g.fillRect(47.5, 61, 5, 12);
-}, { animate: true, still: 0.8 });
-
 // ------------------------------------------------------------ profile video
-// The logo full-bleed at 640x640 as an MP4 loop, for an animated profile
-// photo (Telegram Premium). Written to assets/profile.
+// The SaveIt badge full-bleed at 640x640 as an MP4 loop and a PNG, for an
+// animated profile photo (Telegram Premium). Written to assets/profile.
 {
   const dir = path.join(ROOT, "assets", "profile");
   fs.mkdirSync(dir, { recursive: true });
   const SIZE = 640;
-  const frame = (t) => {
+  const big = (t) => {
     const c = createCanvas(SIZE, SIZE);
     const g = c.getContext("2d");
-    const bg = g.createRadialGradient(SIZE / 2, SIZE * 0.35, 40, SIZE / 2, SIZE / 2, SIZE * 0.75);
-    bg.addColorStop(0, "#1E4BA8");
-    bg.addColorStop(1, "#06122E");
-    g.fillStyle = bg;
+    g.fillStyle = "#050B18";
     g.fillRect(0, 0, SIZE, SIZE);
-    g.scale(SIZE / 130, SIZE / 130);
-    g.translate(15, 12);
+    g.scale(SIZE / 100, SIZE / 100);
     g.lineCap = "round";
     g.lineJoin = "round";
-    drawLogo(g, t);
-    for (const [x, y, r, ph] of [[88, 14, 5, 0], [96, 26, 2.5, 0.5], [8, 30, 3, 0.25]]) sparkle(g, x, y, r * twinkle(t, ph));
+    drawSaveIt(g, t);
     return c;
   };
-  fs.writeFileSync(path.join(dir, "saveit-logo.png"), frame(0.6).toBuffer("image/png"));
+  fs.writeFileSync(path.join(dir, "saveit-logo.png"), big(0.5).toBuffer("image/png"));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "profile-"));
   try {
     for (let i = 0; i < FRAMES; i++) {
-      fs.writeFileSync(path.join(tmp, `f${String(i).padStart(3, "0")}.png`), frame(i / FRAMES).toBuffer("image/png"));
+      fs.writeFileSync(path.join(tmp, `f${String(i).padStart(3, "0")}.png`), big(i / FRAMES).toBuffer("image/png"));
     }
     execFileSync(FFMPEG, [
       "-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(tmp, "f%03d.png"),
@@ -1265,20 +1045,22 @@ tile("lock", ["#5EEAD4", "#0F766E"], (g, t) => {
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {
   const files = fs.readdirSync(OUT).filter((f) => f.endsWith(".png")).sort();
-  const cols = 12;
+  const cols = 10;
   const rows = Math.ceil(files.length / cols);
-  const sheet = createCanvas(cols * 110, rows * 130);
+  const sheet = createCanvas(cols * 110, rows * 130 * 2);
   const s = sheet.getContext("2d");
-  s.fillStyle = "#17212B";
-  s.fillRect(0, 0, sheet.width, sheet.height);
-  s.fillStyle = "#FFFFFF";
-  s.font = "800 11px Inter";
-  s.textAlign = "center";
-  for (const [i, f] of files.entries()) {
-    const x = (i % cols) * 110;
-    const y = Math.floor(i / cols) * 130;
-    s.drawImage(await loadImage(fs.readFileSync(path.join(OUT, f))), x + 5, y + 5, 100, 100);
-    s.fillText(f.replace(".png", ""), x + 55, y + 122);
+  for (const [half, bg, fg] of [[0, "#17212B", "#FFFFFF"], [1, "#FFFFFF", "#17212B"]]) {
+    s.fillStyle = bg;
+    s.fillRect(0, half * rows * 130, sheet.width, rows * 130);
+    s.fillStyle = fg;
+    s.font = "800 11px Inter";
+    s.textAlign = "center";
+    for (const [i, f] of files.entries()) {
+      const x = (i % cols) * 110;
+      const y = Math.floor(i / cols) * 130 + half * rows * 130;
+      s.drawImage(await loadImage(fs.readFileSync(path.join(OUT, f))), x + 5, y + 5, 100, 100);
+      s.fillText(f.replace(".png", ""), x + 55, y + 122);
+    }
   }
   fs.writeFileSync(process.argv[2], sheet.toBuffer("image/png"));
 }

@@ -3,7 +3,7 @@
  *
  * Telegram shows custom emoji in a bot's own messages and on its buttons
  * when the bot's owner has Telegram Premium. The pack itself is made by the
- * bot from assets/emoji/*.png (100x100) with the operator's /makeemoji, and
+ * bot from assets/emoji (100x100 WEBM, or PNG) with the operator's /makeemoji, and
  * the resulting emoji ids are kept in bot-config (see botConfig.js).
  *
  * Text anywhere in the bot can carry tokens like {:yt:}. notifyBot.call()
@@ -40,9 +40,9 @@ export const EMOJI = {
   admin: ["admin", "🛡"],
   // main menu
   m_free: ["m_free", "🆓"],
-  m_pro: ["m_pro", "👑"],
+  m_pro: ["premium", "👑"],
   m_account: ["m_account", "👤"],
-  m_buy: ["m_buy", "💎"],
+  m_buy: ["vip", "💎"],
   m_history: ["m_history", "📜"],
   m_referral: ["m_referral", "👥"],
   m_language: ["m_language", "🌐"],
@@ -57,12 +57,12 @@ export const EMOJI = {
   inv_stock: ["inv_stock", "📦"],
   inv_unpaid: ["inv_unpaid", "⏳"],
   inv_refresh: ["inv_refresh", "🔄"],
-  inv_pro: ["inv_pro", "👑"],
+  inv_pro: ["premium", "👑"],
   inv_summary: ["inv_summary", "📋"],
   inv_shop: ["inv_shop", "🏪"],
   inv_back: ["inv_back", "⬅️"],
   // replies & extras
-  diamond: ["diamond", "💎"],
+  diamond: ["vip", "💎"],
   sparkle: ["sparkle", "✨"],
   video: ["video", "🎬"],
   ok: ["ok", "✅"],

@@ -18,33 +18,38 @@ const MENU = [
   // Two doors instead of one: the public sites anyone may use, and the
   // private-Telegram path that needs VIP. Splitting them means nobody pastes
   // a VIP link only to be told no -- the label says which is which up front.
+  // Labels are kept short so two fit side by side; older, longer labels stay
+  // as aliases so a keyboard still on someone's screen keeps working.
   {
     action: "free",
     emoji: "m_free",
-    km: "🆓 Free ♾ · YT · FB · IG · TikTok",
-    en: "🆓 Free ♾ · YT · FB · IG · TikTok",
-    aliases: ["🆓 ទាញយក · FB · IG · YT · TikTok", "🆓 Free · FB · IG · YT · TikTok", "📥 ទាញយកតំណ", "📥 Download"],
+    km: "🆓 ទាញយក Free",
+    en: "🆓 Free Download",
+    aliases: [
+      "🆓 Free ♾ · YT · FB · IG · TikTok", "🆓 ទាញយក · FB · IG · YT · TikTok", "🆓 Free · FB · IG · YT · TikTok",
+      "📥 ទាញយកតំណ", "📥 Download",
+    ],
   },
   {
     action: "premium",
     emoji: "m_pro",
-    km: "👑 Pro · Telegram · 10 ឥតគិតថ្លៃ",
-    en: "👑 Pro · Telegram · 10 free",
-    aliases: ["👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
+    km: "👑 Pro Telegram",
+    en: "👑 Pro Telegram",
+    aliases: ["👑 Pro · Telegram · 10 ឥតគិតថ្លៃ", "👑 Pro · Telegram · 10 free", "👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
   },
-  { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice · វិក្កយបត្រ", en: "🧾 KH Invoice" },
-  { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker · បង្កើត Emoji", en: "✨ Emoji Maker" },
-  { action: "buy", emoji: "m_buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
+  { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice", en: "🧾 KH Invoice", aliases: ["🧾 KH Invoice · វិក្កយបត្រ"] },
+  { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
+  { action: "buy", emoji: "m_buy", km: "💎 ទិញ VIP", en: "💎 Buy VIP", aliases: ["💎 ទិញ / VIP", "💎 Buy / VIP"] },
   { action: "history", emoji: "m_history", km: "📜 ប្រវត្តិ", en: "📜 History" },
   { action: "referral", emoji: "m_referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
   { action: "language", emoji: "m_language", km: "🌐 ភាសា", en: "🌐 Language" },
-  { action: "help", emoji: "m_help", km: "❓ របៀបប្រើ", en: "❓ How to use" },
+  { action: "help", emoji: "m_help", km: "❓ ជំនួយ", en: "❓ Help", aliases: ["❓ របៀបប្រើ", "❓ How to use"] },
   {
     action: "app",
     emoji: "logo",
-    km: "🚀 Open App · បើកកម្មវិធី",
+    km: "🚀 Open App",
     en: "🚀 Open App",
-    aliases: ["🖥 បើកកម្មវិធី", "🖥 Open app"],
+    aliases: ["🚀 Open App · បើកកម្មវិធី", "🖥 បើកកម្មវិធី", "🖥 Open app"],
   },
 ];
 
@@ -86,11 +91,11 @@ export function mainKeyboard(language) {
   // Open App first, where it is seen -- it is also the chat's menu button.
   const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
   if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
+  // Two per row, grouped: downloading, the two tools, the account and its
+  // money, then settings.
   rows.push(
-    [button("free")],
-    [button("premium")],
-    ...(config.khInvoiceBridgeSecret ? [[button("invoice")]] : []),
-    [button("emoji")],
+    [button("free"), button("premium")],
+    config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("account"), button("buy")],
     [button("history"), button("referral")],
     [button("language"), button("help")],
