@@ -75,7 +75,7 @@ export function languageKeyboard() {
 const TEXT = {
   km: {
     welcome: (name) =>
-      `👋 សួស្តី ${name}!\n\n` +
+      `👋 សួស្តី ${name}! នេះជា SaveIt KH\n\n` +
       `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n\n` +
       `🆓 ឥតគិតថ្លៃ — YouTube · Facebook · TikTok ·\n` +
       `      Instagram · X និងគេហទំព័រជាង ១៨០០\n\n` +
@@ -159,7 +159,7 @@ const TEXT = {
   },
   en: {
     welcome: (name) =>
-      `👋 Hi ${name}!\n\n` +
+      `👋 Hi ${name}! This is SaveIt KH\n\n` +
       `I download videos and songs:\n\n` +
       `🆓 Free — YouTube · Facebook · TikTok ·\n` +
       `      Instagram · X and ~1800 more sites\n\n` +
