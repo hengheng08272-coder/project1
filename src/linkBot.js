@@ -178,7 +178,7 @@ async function showAccount(chatId, user) {
   // whole message ("Can't find end of the entity") rather than the one word.
   // Nothing here needs formatting enough to risk a screen that never arrives.
   const lines = [
-    `📋 ${t.accountTitle}`,
+    `{:m_account:} ${t.accountTitle}`,
     "",
     `├ ${t.fieldId}: ${user.telegram_user_id}`,
     `├ ${t.fieldUsername}: ${user.username ? "@" + user.username : "—"}`,
@@ -200,7 +200,7 @@ async function showHistory(chatId, user) {
   const icon = (status) =>
     status === "completed" ? "✅" : status === "failed" ? "❌" : status === "downloading" ? "⏳" : "🕐";
   const lines = jobs.map((job) => `${icon(job.item?.status)} ${job.source_url.slice(0, 60)}`);
-  await send(chatId, `📜 ${t.historyTitle}\n\n${lines.join("\n")}`);
+  await send(chatId, `{:m_history:} ${t.historyTitle}\n\n${lines.join("\n")}`);
 }
 
 async function showReferral(chatId, user, botUsername) {
@@ -209,7 +209,7 @@ async function showReferral(chatId, user, botUsername) {
     await db().from("bot_users").select("telegram_user_id").eq("referred_by", user.telegram_user_id)
   ).length;
   const link = `https://t.me/${botUsername}?start=ref_${user.telegram_user_id}`;
-  await send(chatId, `👥 ${t.referralTitle}\n\n${t.referralBody(count, config.botReferralBonus, link)}`);
+  await send(chatId, `{:m_referral:} ${t.referralTitle}\n\n${t.referralBody(count, config.botReferralBonus, link)}`);
 }
 
 /**

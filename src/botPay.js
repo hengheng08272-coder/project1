@@ -36,7 +36,7 @@ export function isAdminChat(chatId) {
 
 const L = {
   km: {
-    choose: "💎 ជ្រើសរើសកញ្ចប់៖",
+    choose: "{:m_buy:} ជ្រើសរើសកញ្ចប់៖",
     freeLine: (left) => `🆓 ឥតគិតថ្លៃនៅសល់៖ ${left} ដង`,
     premiumLine: (until) => `👑 VIP រហូតដល់ ${until}`,
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
@@ -54,7 +54,7 @@ const L = {
     rejected: "❌ ការទូទាត់មិនត្រូវបានបញ្ជាក់ទេ។ បើអ្នកបានបង់ពិតប្រាកដ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
   },
   en: {
-    choose: "💎 Choose a package:",
+    choose: "{:m_buy:} Choose a package:",
     freeLine: (left) => `🆓 Free downloads left: ${left}`,
     premiumLine: (until) => `👑 VIP until ${until}`,
     notReady: "Payments aren't set up yet. Please contact the operator.",

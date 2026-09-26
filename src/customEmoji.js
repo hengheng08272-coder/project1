@@ -34,6 +34,16 @@ export const EMOJI = {
   bakong: ["bakong", "🏦"],
   bankc: ["bank_c", "🏦"],
   khqr: ["khqr", "💳"],
+  // main menu
+  m_free: ["m_free", "🆓"],
+  m_pro: ["m_pro", "👑"],
+  m_account: ["m_account", "👤"],
+  m_buy: ["m_buy", "💎"],
+  m_history: ["m_history", "📜"],
+  m_referral: ["m_referral", "👥"],
+  m_language: ["m_language", "🌐"],
+  m_help: ["m_help", "❓"],
+  m_desktop: ["m_desktop", "🖥"],
   // KH Invoice section
   inv_app: ["inv_app", "📱"],
   inv_create: ["inv_create", "🧾"],

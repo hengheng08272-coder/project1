@@ -14,35 +14,41 @@ export const LANGUAGES = ["km", "en"];
  * languages' labels have to map back to the same action (see actionForLabel).
  */
 const MENU = [
-  { action: "account", km: "👤 គណនី", en: "👤 Account" },
+  { action: "account", emoji: "m_account", km: "👤 គណនី", en: "👤 Account" },
   // Two doors instead of one: the public sites anyone may use, and the
   // private-Telegram path that needs VIP. Splitting them means nobody pastes
   // a VIP link only to be told no -- the label says which is which up front.
   {
     action: "free",
+    emoji: "m_free",
     km: "🆓 Free ♾ · YT · FB · IG · TikTok",
     en: "🆓 Free ♾ · YT · FB · IG · TikTok",
     aliases: ["🆓 ទាញយក · FB · IG · YT · TikTok", "🆓 Free · FB · IG · YT · TikTok", "📥 ទាញយកតំណ", "📥 Download"],
   },
   {
     action: "premium",
+    emoji: "m_pro",
     km: "👑 Pro · Telegram · 10 ឥតគិតថ្លៃ",
     en: "👑 Pro · Telegram · 10 free",
     aliases: ["👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
   },
-  { action: "invoice", km: "🧾 KH Invoice · វិក្កយបត្រ", en: "🧾 KH Invoice" },
-  { action: "buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
-  { action: "history", km: "📜 ប្រវត្តិ", en: "📜 History" },
-  { action: "referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
-  { action: "language", km: "🌐 ភាសា", en: "🌐 Language" },
-  { action: "help", km: "❓ របៀបប្រើ", en: "❓ How to use" },
-  { action: "app", km: "🖥 បើកកម្មវិធី", en: "🖥 Open app" },
+  { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice · វិក្កយបត្រ", en: "🧾 KH Invoice" },
+  { action: "buy", emoji: "m_buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
+  { action: "history", emoji: "m_history", km: "📜 ប្រវត្តិ", en: "📜 History" },
+  { action: "referral", emoji: "m_referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
+  { action: "language", emoji: "m_language", km: "🌐 ភាសា", en: "🌐 Language" },
+  { action: "help", emoji: "m_help", km: "❓ របៀបប្រើ", en: "❓ How to use" },
+  { action: "app", emoji: "m_desktop", km: "🖥 បើកកម្មវិធី", en: "🖥 Open app" },
 ];
 
 const LABEL_TO_ACTION = new Map();
+// With a logo icon on the button, its own leading emoji is dropped (see
+// customEmoji.js), so the tapped text may arrive without it.
+const bareLabel = (label) => label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
 for (const item of MENU) {
   for (const label of [item.km, item.en, ...(item.aliases ?? [])]) {
     LABEL_TO_ACTION.set(label, item.action);
+    LABEL_TO_ACTION.set(bareLabel(label), item.action);
   }
 }
 
@@ -65,20 +71,20 @@ export function actionForLabel(text) {
  * when it isn't, rather than showing a button that does nothing.
  */
 export function mainKeyboard(language) {
-  const label = (action) => {
+  const button = (action) => {
     const item = MENU.find((m) => m.action === action);
-    return item[language] ?? item.en;
+    return { text: item[language] ?? item.en, emoji: item.emoji };
   };
   const rows = [
-    [{ text: label("free") }],
-    [{ text: label("premium") }],
-    ...(config.khInvoiceBridgeSecret ? [[{ text: label("invoice") }]] : []),
-    [{ text: label("account") }, { text: label("buy") }],
-    [{ text: label("history") }, { text: label("referral") }],
-    [{ text: label("language") }, { text: label("help") }],
+    [button("free")],
+    [button("premium")],
+    ...(config.khInvoiceBridgeSecret ? [[button("invoice")]] : []),
+    [button("account"), button("buy")],
+    [button("history"), button("referral")],
+    [button("language"), button("help")],
   ];
   if (config.webAppUrl) {
-    rows.push([{ text: label("app"), web_app: { url: config.webAppUrl } }]);
+    rows.push([{ ...button("app"), web_app: { url: config.webAppUrl } }]);
   }
   return { keyboard: rows, resize_keyboard: true, is_persistent: true };
 }
@@ -97,14 +103,14 @@ const TEXT = {
     welcome: (name) =>
       `👋 សួស្តី ${name}! នេះជា SaveIt KH\n\n` +
       `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n\n` +
-      `🆓 SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់ ♾\n` +
-      `      YouTube · Facebook · Instagram · TikTok · X\n\n` +
-      `👑 SaveIt Pro — Telegram (ក្រុម/channel ឯកជន)\n` +
+      `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់ ♾\n` +
+      `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram (ក្រុម/channel ឯកជន)\n` +
       `      🎁 សាកល្បងឥតគិតថ្លៃ 10 វីដេអូ\n` +
       `      🎬 វីដេអូពេញទំហំ គ្មានកម្រិត 50MB\n\n` +
       `គ្រាន់តែ ផ្ញើតំណមក ខ្ញុំធ្វើនៅសល់។`,
     help:
-      `📘 របៀបប្រើ\n\n` +
+      `{:m_help:} របៀបប្រើ\n\n` +
       `1️⃣ ចម្លងតំណវីដេអូ (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ ផ្ញើវាមកក្នុងការសន្ទនានេះ\n` +
       `3️⃣ រង់ចាំបន្តិច — ខ្ញុំផ្ញើឯកសារ ឬ តំណទាញយកមកវិញ\n\n` +
@@ -135,7 +141,7 @@ const TEXT = {
     openAppMissing: "🖥 កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
     sendLink: "📥 ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
     freeScreen: () =>
-      `🆓 SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
+      `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
       `{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
@@ -145,7 +151,7 @@ const TEXT = {
       `👉 ផ្ញើតំណមកបានឥឡូវនេះ\n` +
       `💡 ចង់យកតែសំឡេង? សរសេរ audio បន្ទាប់ពីតំណ`,
     proScreenTrial: (bar, used, total, left) =>
-      `👑 SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
       `🎁 សាកល្បងឥតគិតថ្លៃ ${total} វីដេអូ\n` +
       `${bar}  ${used}/${total}\n` +
       `✅ នៅសល់ ${left} វីដេអូ\n\n` +
@@ -156,14 +162,14 @@ const TEXT = {
       `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenVip: (until) =>
-      `👑 SaveIt Pro — VIP\n\n` +
+      `{:m_pro:} SaveIt Pro — VIP\n\n` +
       `♾ មិនកំណត់ រហូតដល់ ${until}\n\n` +
       `🔒 ក្រុម / channel ឯកជន (t.me/c/...)\n` +
       `🎬 វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
       `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenEmpty: (bar, total) =>
-      `👑 SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
       `${bar}  ${total}/${total}\n` +
       `⛔ អ្នកប្រើអស់វីដេអូឥតគិតថ្លៃហើយ\n\n` +
       `ដើម្បីបន្ត៖\n` +
@@ -196,14 +202,14 @@ const TEXT = {
     welcome: (name) =>
       `👋 Hi ${name}! This is SaveIt KH\n\n` +
       `I download videos and songs:\n\n` +
-      `🆓 SaveIt Free — free & unlimited ♾\n` +
-      `      YouTube · Facebook · Instagram · TikTok · X\n\n` +
-      `👑 SaveIt Pro — Telegram (private groups/channels)\n` +
+      `{:m_free:} SaveIt Free — free & unlimited ♾\n` +
+      `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram (private groups/channels)\n` +
       `      🎁 10 videos free to try\n` +
       `      🎬 Full-size video, no 50MB limit\n\n` +
       `Just send me a link and I'll do the rest.`,
     help:
-      `📘 How to use\n\n` +
+      `{:m_help:} How to use\n\n` +
       `1️⃣ Copy a video link (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ Send it to this chat\n` +
       `3️⃣ Wait a moment — I send back the file, or a download link\n\n` +
@@ -234,7 +240,7 @@ const TEXT = {
     openAppMissing: "🖥 The web app URL isn't configured yet.",
     sendLink: "📥 Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
     freeScreen: () =>
-      `🆓 SaveIt Free — free & unlimited\n\n` +
+      `{:m_free:} SaveIt Free — free & unlimited\n\n` +
       `{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
@@ -244,7 +250,7 @@ const TEXT = {
       `👉 Send a link now\n` +
       `💡 Want audio only? Write audio after the link`,
     proScreenTrial: (bar, used, total, left) =>
-      `👑 SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
       `🎁 Free trial: ${total} videos\n` +
       `${bar}  ${used}/${total}\n` +
       `✅ ${left} left\n\n` +
@@ -255,14 +261,14 @@ const TEXT = {
       `⚡ Delivered instantly\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenVip: (until) =>
-      `👑 SaveIt Pro — VIP\n\n` +
+      `{:m_pro:} SaveIt Pro — VIP\n\n` +
       `♾ Unlimited until ${until}\n\n` +
       `🔒 Private groups / channels (t.me/c/...)\n` +
       `🎬 Full-size video — no 50MB limit\n` +
       `⚡ Delivered instantly\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenEmpty: (bar, total) =>
-      `👑 SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
       `${bar}  ${total}/${total}\n` +
       `⛔ Your free videos are used up\n\n` +
       `To keep going:\n` +
