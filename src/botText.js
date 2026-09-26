@@ -30,6 +30,7 @@ const MENU = [
     en: "👑 Pro · Telegram · 10 free",
     aliases: ["👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
   },
+  { action: "invoice", km: "🧾 KH Invoice · វិក្កយបត្រ", en: "🧾 KH Invoice" },
   { action: "buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
   { action: "history", km: "📜 ប្រវត្តិ", en: "📜 History" },
   { action: "referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
@@ -71,6 +72,7 @@ export function mainKeyboard(language) {
   const rows = [
     [{ text: label("free") }],
     [{ text: label("premium") }],
+    ...(config.khInvoiceBridgeSecret ? [[{ text: label("invoice") }]] : []),
     [{ text: label("account") }, { text: label("buy") }],
     [{ text: label("history") }, { text: label("referral") }],
     [{ text: label("language") }, { text: label("help") }],

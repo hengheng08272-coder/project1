@@ -63,6 +63,16 @@ export const config = {
   // here, and only opens it as a Mini App when the same URL is registered
   // with @BotFather -- otherwise the button is simply a link.
   webAppUrl: str("WEB_APP_URL"),
+  // KH Invoice, the separate invoicing app the bot also fronts (see
+  // khInvoice.js). The bridge is that app's telegram-bridge edge function;
+  // the secret is the one stored in its bridge_config row. The web URL is
+  // what "📱 Open KH Invoice" opens as a Mini App.
+  khInvoiceBridgeUrl: str(
+    "KH_INVOICE_BRIDGE_URL",
+    "https://xwtzoeegwfhtvyhydeyy.supabase.co/functions/v1/telegram-bridge"
+  ),
+  khInvoiceBridgeSecret: str("KH_INVOICE_BRIDGE_SECRET"),
+  khInvoiceWebUrl: str("KH_INVOICE_WEB_URL"),
   // This service's own public origin, used to register the bot's webhook on
   // startup. Railway sets RAILWAY_PUBLIC_DOMAIN for us; PUBLIC_URL overrides
   // it anywhere else.

@@ -20,6 +20,7 @@ import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { applyKhqrTemplate, khqrMd5, validateKhqrTemplate } from "./khqr.js";
 import { renderKhqrCard } from "./khqrCard.js";
+import * as khInvoice from "./khInvoice.js";
 import { call } from "./notifyBot.js";
 
 // A payer has this long to pay one QR before the order lapses. Bakong
@@ -124,8 +125,10 @@ function formatDate(iso) {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
+/** SaveIt's own packs. KH Invoice plans live in the same table but have their own screen. */
 async function packages() {
-  return rows(await db().from("bot_packages").select("*").eq("active", true).order("sort"));
+  const all = rows(await db().from("bot_packages").select("*").eq("active", true).order("sort"));
+  return all.filter((pkg) => !khInvoice.isInvoicePackage(pkg.id));
 }
 
 function packageTitle(pkg, language) {
@@ -239,6 +242,25 @@ async function grant(order, confirmedBy, bankHash = null) {
   );
   if (!pkg || !user) return false;
 
+  if (khInvoice.isInvoicePackage(pkg.id)) {
+    // Paid for KH Invoice, not for downloads: the order is already marked
+    // paid, so if the app can't be reached the operator is told and can
+    // retry by hand -- the payer is never charged twice.
+    try {
+      const until = await khInvoice.activatePlan(order, user);
+      await call("sendMessage", { chat_id: order.chat_id, text: khInvoice.grantedText(user.language, until) });
+    } catch (err) {
+      console.error(`KH Invoice activation for ${order.ticket} failed:`, err?.message ?? err);
+      if (config.telegramAdminChatId) {
+        await call("sendMessage", {
+          chat_id: config.telegramAdminChatId,
+          text: `⚠️ KH Invoice activation failed for paid order ${order.ticket} (user ${order.telegram_user_id}): ${String(err?.message ?? err).slice(0, 300)}\nRetry with /invactivate ${order.ticket}`,
+        });
+      }
+    }
+    return true;
+  }
+
   const patch = { updated_at: nowIso() };
   if (pkg.downloads) {
     patch.paid_downloads = (user.paid_downloads ?? 0) + pkg.downloads;
@@ -350,6 +372,23 @@ export async function handleAdminPayCommand(chatId, text) {
   const setKhqr = /^\/setqr\s+(\S+)$/i.exec(text);
   if (setKhqr) {
     await saveTemplate(chatId, setKhqr[1]);
+    return true;
+  }
+  const retry = /^\/invactivate\s+(\S+)$/i.exec(text);
+  if (retry) {
+    const [order] = rows(await db().from("bot_orders").select("*").eq("ticket", retry[1]).limit(1));
+    if (!order || order.status !== "paid" || !khInvoice.isInvoicePackage(order.package_id)) {
+      await call("sendMessage", { chat_id: chatId, text: "No paid KH Invoice order with that ticket." });
+      return true;
+    }
+    const [user] = rows(await db().from("bot_users").select("*").eq("telegram_user_id", order.telegram_user_id).limit(1));
+    try {
+      const until = await khInvoice.activatePlan(order, user ?? { telegram_user_id: order.telegram_user_id });
+      await call("sendMessage", { chat_id: order.chat_id, text: khInvoice.grantedText(user?.language, until) });
+      await call("sendMessage", { chat_id: chatId, text: `✅ Activated until ${String(until).slice(0, 10)}.` });
+    } catch (err) {
+      await call("sendMessage", { chat_id: chatId, text: `❌ ${String(err?.message ?? err).slice(0, 300)}` });
+    }
     return true;
   }
   if (/^\/setqr$/i.test(text)) {

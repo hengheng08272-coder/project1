@@ -14,6 +14,7 @@ import { db, nowIso, rows, upsertSingle } from "./db.js";
 import { parseKhqr } from "./khqr.js";
 import { applyAutoRules, retryFailed, runDownload } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
+import * as khInvoice from "./khInvoice.js";
 import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
 import { recordManualUpload } from "./library.js";
 import * as mirror from "./mirror.js";
@@ -906,6 +907,24 @@ ${autoOpen ? `<script>setTimeout(function(){ location.href = ${JSON.stringify(au
 }
 
 /**
+ * KH Invoice's edge function asks here whether Telegram Mini App initData is
+ * genuine -- only this service holds the bot token that signs it. Guarded by
+ * the shared bridge secret rather than requireApiKey: the caller is that
+ * edge function, not the web app.
+ */
+app.post(
+  "/api/kh-invoice/verify",
+  route(async (req, res) => {
+    if (!khInvoice.bridgeSecretMatches(req.get("X-Bridge-Secret"))) {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const user = khInvoice.verifyInitData(req.body?.initData);
+    if (!user) return res.status(401).json({ ok: false, error: "invalid" });
+    res.json({ ok: true, user });
+  })
+);
+
+/**
  * Telegram calls this with every update sent to the notification bot --
  * only callback_query (an Approve/Reject button tap) is handled. Not
  * behind requireApiKey (Telegram itself is the caller): authorization
@@ -1008,6 +1027,7 @@ async function registerBotWebhook() {
 const server = app.listen(config.port, () => {
   console.log(`Userbot service listening on http://localhost:${config.port}`);
   void registerBotWebhook();
+  void khInvoice.announce();
   void loop();
 });
 

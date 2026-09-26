@@ -20,6 +20,7 @@ import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } fr
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
+import * as khInvoice from "./khInvoice.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
@@ -248,6 +249,8 @@ export async function handleMessage(message) {
     return;
   }
 
+  if (startPayload && (await khInvoice.handleStart(chatId, user, startPayload))) return;
+
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
     await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language) });
@@ -257,7 +260,11 @@ export async function handleMessage(message) {
   if (await handleAdminCommand(chatId, text)) return;
   if (await botPay.handleAdminPayCommand(chatId, text)) return;
 
-  switch (actionForLabel(text) ?? commandAction(text)) {
+  const action = actionForLabel(text) ?? commandAction(text);
+  if (action) khInvoice.cancelPending(chatId);
+  switch (action) {
+    case "invoice":
+      return khInvoice.showHome(chatId, user);
     case "account":
       return showAccount(chatId, user);
     case "history":
@@ -283,6 +290,8 @@ export async function handleMessage(message) {
   }
 
   const url = URL_PATTERN.exec(text)?.[0];
+  if (url) khInvoice.cancelPending(chatId);
+  else if (await khInvoice.handleText(chatId, user, text)) return;
   if (!url) {
     await send(chatId, t.notALink, { reply_markup: mainKeyboard(user.language) });
     return;
@@ -371,6 +380,7 @@ function commandAction(text) {
     case "/buy": return "buy";
     case "/free": return "free";
     case "/premium": return "premium";
+    case "/invoice": return "invoice";
     default: return null;
   }
 }
@@ -378,6 +388,9 @@ function commandAction(text) {
 /** The language buttons under "🌐 ភាសា". Returns true when it handled the tap. */
 export async function handleCallback(cq) {
   const data = String(cq?.data ?? "");
+  if (data.startsWith("inv:") && cq.from?.id) {
+    return khInvoice.handleCallback(cq, await ensureUser(cq.from, null));
+  }
   if (!data.startsWith("bot:")) return false;
 
   const [, kind, value] = data.split(":");
