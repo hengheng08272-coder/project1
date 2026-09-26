@@ -1,198 +1,324 @@
 /**
- * Draws the familiar KHQR ticket around a generated QR.
+ * The payment ticket the bot sends as a photo, modelled on the telegrambot-
+ * app's pay screen: a dark "pass" with a blue band (what is being bought and
+ * the ticket number), and inside it the familiar white KHQR card -- red
+ * band, payee, amount, QR with the Bakong mark in the middle -- then the
+ * banks that can scan it.
  *
- * Ported from the telegrambot- app's KhqrCard component, which exists for a
- * good reason: a QR the owner uploads is usually a whole ticket graphic --
- * red KHQR band, name, amount -- while a payload we generate renders as a
- * bare black-and-white square. Same payment, but the bare square reads as
- * less trustworthy at exactly the moment somebody is handing over money.
- *
- * That component draws its chrome in CSS, which is no use for a photo a bot
- * sends, so this composes the same ticket as pixels: the red band with its
- * clipped corner, the real KHQR mark (the repo's own artwork, recoloured
- * white, so no font is needed for the one word that must look official), and
- * the QR beneath a dashed rule. The merchant name and amount ride in the
- * message caption, where Telegram renders them in the reader's own font.
+ * Drawn with @napi-rs/canvas and fonts shipped in assets/fonts, so it needs
+ * nothing from the system. The payee and amount are read from the payload
+ * itself, so the picture can never disagree with what the bank will show.
  */
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PNG } from "pngjs";
+import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
 import QRCode from "qrcode";
 
-const LOGO_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "khqr-logo.png");
-const RED = [225, 27, 36];
-const WHITE = [255, 255, 255];
-const DASH = [220, 220, 220];
+import { parseKhqr } from "./khqr.js";
 
-// undefined = not tried yet; null = tried and unavailable.
-let logoCache;
-/**
- * The KHQR mark, or null when it cannot be read. A missing decoration must
- * never stop someone paying: without the file, the ticket is drawn with a
- * plain red band and the QR still works.
- */
-function khqrLogo() {
-  if (logoCache === undefined) {
+const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
+
+let fontsReady = false;
+function registerFonts() {
+  if (fontsReady) return;
+  fontsReady = true;
+  const fonts = [
+    ["Inter_600SemiBold.ttf", "Inter"],
+    ["Inter_800ExtraBold.ttf", "Inter"],
+    ["Battambang_400Regular.ttf", "Battambang"],
+    ["Battambang_700Bold.ttf", "Battambang"],
+  ];
+  for (const [file, family] of fonts) {
     try {
-      logoCache = PNG.sync.read(fs.readFileSync(LOGO_PATH));
+      GlobalFonts.registerFromPath(path.join(ASSETS, "fonts", file), family);
     } catch (err) {
-      console.error("KHQR logo unavailable, drawing the ticket without it:", err?.message ?? err);
-      logoCache = null;
+      console.error(`Font ${file} unavailable:`, err?.message ?? err);
     }
   }
-  return logoCache;
 }
 
-function setPixel(png, x, y, [r, g, b], alpha = 255) {
-  if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
-  const i = (png.width * y + x) << 2;
-  if (alpha >= 255) {
-    png.data[i] = r;
-    png.data[i + 1] = g;
-    png.data[i + 2] = b;
-    png.data[i + 3] = 255;
-    return;
+// Decorations are cached and optional: a missing file just leaves a gap,
+// it never stops someone paying.
+const imageCache = new Map();
+async function asset(relative) {
+  if (!imageCache.has(relative)) {
+    imageCache.set(
+      relative,
+      loadImage(path.join(ASSETS, relative)).catch((err) => {
+        console.error(`KHQR ticket asset ${relative} unavailable:`, err?.message ?? err);
+        return null;
+      })
+    );
   }
-  // Source-over onto whatever is already there, so edges land softly
-  // instead of showing the jagged step a hard test would leave.
-  const a = alpha / 255;
-  const base = png.data[i + 3] ? 1 : 0;
-  png.data[i] = Math.round(r * a + png.data[i] * base * (1 - a));
-  png.data[i + 1] = Math.round(g * a + png.data[i + 1] * base * (1 - a));
-  png.data[i + 2] = Math.round(b * a + png.data[i + 2] * base * (1 - a));
-  png.data[i + 3] = Math.max(png.data[i + 3], Math.round(255 * a));
+  return imageCache.get(relative);
 }
 
-/** Rounded rectangle, anti-aliased on the curves. */
-function fillRoundedRect(png, x0, y0, w, h, radius, colour) {
-  for (let y = y0; y < y0 + h; y += 1) {
-    for (let x = x0; x < x0 + w; x += 1) {
-      // Distance past the corner circle, measured per corner.
-      const dx = Math.max(x0 + radius - x, x - (x0 + w - 1 - radius), 0);
-      const dy = Math.max(y0 + radius - y, y - (y0 + h - 1 - radius), 0);
-      if (dx === 0 || dy === 0) {
-        setPixel(png, x, y, colour);
-        continue;
+const C = {
+  page: "#0B1224",
+  panel: "#111A2E",
+  panelEdge: "#1F2B47",
+  bandFrom: "#1D3FAE",
+  bandTo: "#2563EB",
+  red: "#E11B24",
+  ink: "#111111",
+  muted: "#8A8A8A",
+  soft: "#94A3B8",
+  dash: "#DCDCDC",
+};
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+/** Text with letter spacing, drawn a glyph at a time (canvas spacing support varies). */
+function spaced(g, text, x, y, spacing, align = "left") {
+  const widths = [...text].map((ch) => g.measureText(ch).width);
+  const total = widths.reduce((a, w) => a + w, 0) + spacing * (widths.length - 1);
+  let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
+  const saved = g.textAlign;
+  g.textAlign = "left";
+  [...text].forEach((ch, i) => {
+    g.fillText(ch, cx, y);
+    cx += widths[i] + spacing;
+  });
+  g.textAlign = saved;
+}
+
+function ellipsize(g, text, maxWidth) {
+  if (g.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && g.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
+  return `${t}…`;
+}
+
+function dashedLine(g, x0, x1, y, colour, dash = 5, gap = 4) {
+  g.save();
+  g.strokeStyle = colour;
+  g.lineWidth = 1;
+  g.setLineDash([dash, gap]);
+  g.beginPath();
+  g.moveTo(x0, y + 0.5);
+  g.lineTo(x1, y + 0.5);
+  g.stroke();
+  g.restore();
+}
+
+function payloadFacts(payload) {
+  const fields = parseKhqr(payload) ?? [];
+  const get = (tag) => fields.find((f) => f.tag === tag)?.value ?? null;
+  const currency = get("53") === "116" ? "KHR" : "USD";
+  const amount = Number(get("54") ?? 0);
+  const value =
+    currency === "KHR"
+      ? Math.round(amount).toLocaleString("en-US")
+      : amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return { name: get("59") ?? "", value, currency };
+}
+
+/** Draws the QR modules crisply at an exact pixel size. */
+function drawQr(g, payload, x, y, size) {
+  // H: survives the ~20% the centre mark covers, with room to spare.
+  const qr = QRCode.create(payload, { errorCorrectionLevel: "H" });
+  const n = qr.modules.size;
+  const quiet = 1;
+  const cell = size / (n + quiet * 2);
+  g.fillStyle = "#FFFFFF";
+  g.fillRect(x, y, size, size);
+  g.fillStyle = "#0A101E";
+  for (let r = 0; r < n; r += 1) {
+    for (let c = 0; c < n; c += 1) {
+      if (qr.modules.get(r, c)) {
+        const px = x + (c + quiet) * cell;
+        const py = y + (r + quiet) * cell;
+        // Rounded out to whole pixels so neighbouring modules meet without hairlines.
+        g.fillRect(Math.floor(px), Math.floor(py), Math.ceil(px + cell) - Math.floor(px), Math.ceil(py + cell) - Math.floor(py));
       }
-      const d = Math.hypot(dx, dy);
-      if (d <= radius - 0.5) setPixel(png, x, y, colour);
-      else if (d < radius + 0.5) setPixel(png, x, y, colour, Math.round((radius + 0.5 - d) * 255));
     }
   }
 }
 
-/** Box-filter downscale -- a QR or a logo shrunk by nearest-neighbour turns to mush. */
-function resample(src, outW, outH) {
-  const out = new PNG({ width: outW, height: outH });
-  const sx = src.width / outW;
-  const sy = src.height / outH;
-  for (let y = 0; y < outH; y += 1) {
-    for (let x = 0; x < outW; x += 1) {
-      const x0 = Math.floor(x * sx);
-      const x1 = Math.max(Math.ceil((x + 1) * sx), x0 + 1);
-      const y0 = Math.floor(y * sy);
-      const y1 = Math.max(Math.ceil((y + 1) * sy), y0 + 1);
-      let r = 0, g = 0, b = 0, a = 0, n = 0;
-      for (let yy = y0; yy < y1 && yy < src.height; yy += 1) {
-        for (let xx = x0; xx < x1 && xx < src.width; xx += 1) {
-          const i = (src.width * yy + xx) << 2;
-          r += src.data[i];
-          g += src.data[i + 1];
-          b += src.data[i + 2];
-          a += src.data[i + 3];
-          n += 1;
-        }
-      }
-      const o = (outW * y + x) << 2;
-      out.data[o] = Math.round(r / n);
-      out.data[o + 1] = Math.round(g / n);
-      out.data[o + 2] = Math.round(b / n);
-      out.data[o + 3] = Math.round(a / n);
-    }
-  }
-  return out;
-}
-
-/** Stamps an image, treating its alpha as coverage, optionally recoloured. */
-function composite(png, src, atX, atY, tint = null) {
-  for (let y = 0; y < src.height; y += 1) {
-    for (let x = 0; x < src.width; x += 1) {
-      const i = (src.width * y + x) << 2;
-      const alpha = src.data[i + 3];
-      if (!alpha) continue;
-      const colour = tint ?? [src.data[i], src.data[i + 1], src.data[i + 2]];
-      setPixel(png, atX + x, atY + y, colour, alpha);
-    }
+async function drawCentreMark(g, cx, cy, qrSize) {
+  const outer = qrSize * 0.1;
+  g.fillStyle = "rgba(0,0,0,0.16)";
+  g.beginPath();
+  g.arc(cx, cy + outer * 0.05, outer * 1.04, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.arc(cx, cy, outer, 0, Math.PI * 2);
+  g.fill();
+  const mark = await asset("bakong-mark.png");
+  const size = outer * 1.55;
+  if (mark) {
+    g.drawImage(mark, cx - size / 2, cy - size / 2, size, size);
+  } else {
+    g.fillStyle = C.red;
+    g.beginPath();
+    g.arc(cx, cy, outer * 0.86, 0, Math.PI * 2);
+    g.fill();
   }
 }
 
 /**
- * Renders the ticket. `width` is the whole card; 360 suits a Telegram photo,
- * which is shown small in the chat and only enlarged on a tap -- the old
- * 720px bare QR was wallpaper by comparison.
+ * Renders the ticket as a PNG buffer.
+ *   title    -- the band's left label, e.g. "SAVEIT PRO"
+ *   subtitle -- what is being bought, e.g. "VIP 30 ថ្ងៃ"
+ *   ticket   -- the order's ticket number, top right
+ * Drawn at 2x a 320-point layout: small in the chat, sharp when opened.
  */
-export async function renderKhqrCard(payload, { width = 360 } = {}) {
-  const pad = Math.round(width * 0.055);
-  const headerH = Math.round(width * 0.145);
-  const qrSize = width - pad * 2;
-  const dividerY = headerH + Math.round(pad * 0.9);
-  const height = dividerY + pad + qrSize + pad;
-  const radius = Math.round(width * 0.05);
+export async function renderKhqrCard(payload, { title = "SAVEIT KH", subtitle = "", ticket = "", scale = 2 } = {}) {
+  registerFonts();
+  const facts = payloadFacts(payload);
+  // The ticket fonts have no emoji; package titles often start with one.
+  const plain = (text) => String(text).replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
+  title = plain(title);
+  subtitle = plain(subtitle);
 
-  const card = new PNG({ width, height, fill: true });
-  card.data.fill(0);
-  fillRoundedRect(card, 0, 0, width, height, radius, WHITE);
+  const W = 320;
+  const pad = 14;
+  const bandH = 40;
+  const cardW = 200;
+  const cardPad = 12;
+  const redH = 28;
+  const qrSize = cardW - cardPad * 2;
+  const cardH = redH + 8 + 16 + 26 + 10 + qrSize + cardPad;
+  const headTop = pad + bandH;
+  const perfY = headTop + 58;
+  const cardY = perfY + 16;
+  const banksY = cardY + cardH + 16;
+  const H = banksY + 26 + 30 + pad;
 
-  // Header band, with the KHQR ticket's own clipped bottom-right corner --
-  // the shape is part of how the ticket is recognised, and being a shape it
-  // needs no artwork.
-  // clipPath: polygon(0 0, 100% 0, 100% 55%, 88% 100%, 0 100%) -- the band
-  // keeps its full width until 55% of the way down, then its right edge runs
-  // diagonally in to 88% at the bottom.
-  const notchX = width * 0.88;
-  const notchY = headerH * 0.55;
-  for (let y = 0; y < headerH; y += 1) {
-    const rightEdge =
-      y <= notchY ? width : width - ((y - notchY) / (headerH - notchY)) * (width - notchX);
-    for (let x = 0; x < width; x += 1) {
-      if (x >= rightEdge) {
-        // Feather the diagonal itself so it does not come out as a staircase.
-        if (x < rightEdge + 1) setPixel(card, x, y, RED, Math.round((rightEdge + 1 - x) * 255));
-        continue;
-      }
-      const dx = Math.max(radius - x, x - (width - 1 - radius), 0);
-      const dy = Math.max(radius - y, 0);
-      if (dx > 0 && dy > 0) {
-        const d = Math.hypot(dx, dy);
-        if (d > radius + 0.5) continue;
-        if (d > radius - 0.5) {
-          setPixel(card, x, y, RED, Math.round((radius + 0.5 - d) * 255));
-          continue;
-        }
-      }
-      setPixel(card, x, y, RED);
-    }
+  const canvas = createCanvas(W * scale, H * scale);
+  const g = canvas.getContext("2d");
+  g.scale(scale, scale);
+  g.textBaseline = "alphabetic";
+
+  // Page and pass.
+  g.fillStyle = C.page;
+  g.fillRect(0, 0, W, H);
+  roundRect(g, pad - 6, pad - 6, W - (pad - 6) * 2, H - (pad - 6) * 2, 20);
+  g.fillStyle = C.panel;
+  g.fill();
+  g.strokeStyle = C.panelEdge;
+  g.lineWidth = 1;
+  g.stroke();
+
+  // Blue band, rounded only on top.
+  g.save();
+  roundRect(g, pad - 6, pad - 6, W - (pad - 6) * 2, H - (pad - 6) * 2, 20);
+  g.clip();
+  const band = g.createLinearGradient(0, 0, W, 0);
+  band.addColorStop(0, C.bandFrom);
+  band.addColorStop(1, C.bandTo);
+  g.fillStyle = band;
+  g.fillRect(0, 0, W, headTop);
+  g.restore();
+  g.fillStyle = "#FFFFFF";
+  g.font = "800 14px Inter";
+  spaced(g, title.toUpperCase(), pad + 6, pad + 20, 2.2);
+  if (ticket) {
+    g.font = "600 11px Inter";
+    g.fillStyle = "#C7D2FE";
+    spaced(g, ticket, W - pad - 6, pad + 20, 0.8, "right");
   }
 
-  // The KHQR mark, recoloured white so it reads on the red band.
-  const logo = khqrLogo();
-  if (logo) {
-    const logoW = Math.round(width * 0.3);
-    const logoH = Math.max(1, Math.round((logo.height / logo.width) * logoW));
-    composite(card, resample(logo, logoW, logoH), Math.round((width - logoW) / 2), Math.round((headerH - logoH) / 2), WHITE);
+  // "Scan to pay" + what it is for.
+  g.textAlign = "center";
+  g.fillStyle = "#FFFFFF";
+  g.font = "700 16px Battambang";
+  g.fillText("ស្កេនដើម្បីទូទាត់", W / 2, headTop + 26);
+  if (subtitle) {
+    g.fillStyle = C.soft;
+    g.font = "400 12px Battambang, Inter";
+    g.fillText(ellipsize(g, subtitle, W - pad * 4), W / 2, headTop + 46);
   }
 
-  // Dashed rule, exactly as the ticket prints it.
-  for (let x = pad; x < width - pad; x += 1) {
-    if (Math.floor(x / 5) % 2 === 0) setPixel(card, x, dividerY, DASH);
+  // Perforation: dashed rule with a notch cut into each edge.
+  dashedLine(g, pad + 4, W - pad - 4, perfY, "#2B3A5E", 6, 5);
+  g.fillStyle = C.page;
+  for (const x of [pad - 6, W - pad + 6]) {
+    g.beginPath();
+    g.arc(x, perfY, 7, 0, Math.PI * 2);
+    g.fill();
   }
 
-  const qrPng = PNG.sync.read(
-    await QRCode.toBuffer(payload, { type: "png", width: qrSize, margin: 1, errorCorrectionLevel: "M" })
-  );
-  composite(card, qrPng.width === qrSize ? qrPng : resample(qrPng, qrSize, qrSize), pad, dividerY + pad);
+  // The KHQR card.
+  const cx = (W - cardW) / 2;
+  g.save();
+  g.shadowColor = "rgba(0,0,0,0.45)";
+  g.shadowBlur = 18;
+  g.shadowOffsetY = 6;
+  roundRect(g, cx, cardY, cardW, cardH, 14);
+  g.fillStyle = "#FFFFFF";
+  g.fill();
+  g.restore();
 
-  return PNG.sync.write(card);
+  // Red band with the ticket's clipped bottom-right corner.
+  g.save();
+  roundRect(g, cx, cardY, cardW, cardH, 14);
+  g.clip();
+  g.fillStyle = C.red;
+  g.beginPath();
+  g.moveTo(cx, cardY);
+  g.lineTo(cx + cardW, cardY);
+  g.lineTo(cx + cardW, cardY + redH * 0.55);
+  g.lineTo(cx + cardW * 0.86, cardY + redH);
+  g.lineTo(cx, cardY + redH);
+  g.closePath();
+  g.fill();
+  g.restore();
+  g.fillStyle = "#FFFFFF";
+  g.font = "800 12px Inter";
+  spaced(g, "KHQR", W / 2, cardY + 19, 2.4, "center");
+
+  g.textAlign = "left";
+  g.fillStyle = C.ink;
+  g.font = "600 11px Inter, Battambang";
+  g.fillText(ellipsize(g, facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 8 + 11);
+  g.font = "800 19px Inter";
+  const amountY = cardY + redH + 8 + 16 + 20;
+  g.fillText(facts.value, cx + cardPad, amountY);
+  const valueW = g.measureText(facts.value).width;
+  g.fillStyle = C.muted;
+  g.font = "600 10.5px Inter";
+  g.fillText(facts.currency, cx + cardPad + valueW + 4, amountY);
+
+  const dashY = cardY + redH + 8 + 16 + 26 + 4;
+  dashedLine(g, cx + cardPad, cx + cardW - cardPad, dashY, C.dash, 4, 3);
+
+  const qrY = dashY + 6;
+  drawQr(g, payload, cx + cardPad, qrY, qrSize);
+  await drawCentreMark(g, cx + cardPad + qrSize / 2, qrY + qrSize / 2, qrSize);
+
+  // Banks that can scan it.
+  g.textAlign = "center";
+  g.fillStyle = C.soft;
+  g.font = "400 11px Battambang";
+  g.fillText("ស្កេនបានគ្រប់ App ធនាគារដែលប្រើ KHQR", W / 2, banksY + 4);
+  const icon = 22;
+  const gap = 7;
+  const marks = await Promise.all([1, 2, 3, 4, 5].map((i) => asset(`banks/bank-${i}.png`)));
+  const shown = marks.filter(Boolean);
+  let ix = W / 2 - (shown.length * icon + (shown.length - 1) * gap) / 2;
+  for (const mark of shown) {
+    g.save();
+    roundRect(g, ix, banksY + 14, icon, icon, 6);
+    g.clip();
+    g.drawImage(mark, ix, banksY + 14, icon, icon);
+    g.restore();
+    ix += icon + gap;
+  }
+
+  g.fillStyle = "#64748B";
+  g.font = "400 10.5px Battambang";
+  g.fillText("QR មានសុពលភាព ៦០ នាទី", W / 2, banksY + 14 + icon + 20);
+
+  return canvas.toBuffer("image/png");
 }
