@@ -25,7 +25,7 @@ import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
 import * as r2 from "./r2.js";
 import { mediaInfo } from "./scanner.js";
-import { getClientForChat, parseTelegramLink } from "./telegram.js";
+import { getClientForChat, isAuthorized, listAccounts, parseTelegramLink, TelegramBusyError } from "./telegram.js";
 
 // Telegram's own Bot API cap for a bot sending a file -- not configurable,
 // and well below what the userbot itself can fetch, so this only limits the
@@ -404,6 +404,37 @@ export async function handleCallback(cq) {
 const isAdminChat = (chatId) =>
   Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
 
+/** Whether any Telegram account at all can be used right now. */
+async function anyAccountSignedIn() {
+  if (await isAuthorized()) return true;
+  for (const account of await listAccounts()) {
+    if (account.connected && (await isAuthorized(account.id))) return true;
+  }
+  return false;
+}
+
+/**
+ * Tells the operator the userbot is signed out, at most once an hour: a
+ * customer hitting it is the first sign anyone gets, and without this it
+ * sat broken until somebody happened to look at the logs.
+ */
+let lastOfflineAlertAt = 0;
+const OFFLINE_ALERT_EVERY_MS = 60 * 60 * 1000;
+
+async function alertOperatorOffline() {
+  if (!config.telegramAdminChatId) return;
+  const now = Date.now();
+  if (now - lastOfflineAlertAt < OFFLINE_ALERT_EVERY_MS) return;
+  lastOfflineAlertAt = now;
+  const appLink = config.webAppUrl ? `\n\n${config.webAppUrl}` : "";
+  await send(
+    config.telegramAdminChatId,
+    "⚠️ Userbot ផ្ដាច់ — អតិថិជនម្នាក់ព្យាយាមទាញយកតំណ Telegram តែគ្មានគណនីណាមួយ sign in ទេ។\n\n" +
+      "សូមចូលម្ដងទៀត៖ បើកកម្មវិធី → ការកំណត់ → Telegram → Connect" +
+      appLink
+  );
+}
+
 /**
  * Whether a Telegram link may go through. The operator always may.
  * BOT_PRIVATE_LINKS="admin" switches Telegram links off for everyone else;
@@ -470,8 +501,18 @@ async function sendTelegramPost(chatId, user, url, quota) {
   let entity;
   try {
     ({ client, entity } = await getClientForChat(parsed.chatId));
-  } catch {
-    await send(chatId, t.privateNoAccess);
+  } catch (err) {
+    // Three different failures used to share one message -- "the bot's
+    // account isn't a member" -- which was wrong for two of them and sent
+    // people chasing group membership when the userbot was simply offline.
+    if (err instanceof TelegramBusyError) {
+      await send(chatId, t.telegramBusy);
+    } else if (!(await anyAccountSignedIn())) {
+      await send(chatId, t.telegramOffline);
+      await alertOperatorOffline();
+    } else {
+      await send(chatId, t.privateNoAccess);
+    }
     return;
   }
 

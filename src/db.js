@@ -72,7 +72,12 @@ export async function telegramSettings() {
     apiId: config.telegramApiId || row.api_id || "",
     apiHash: config.telegramApiHash || row.api_hash || "",
     phone: config.telegramPhone || row.phone || "",
-    sessionString: config.telegramSession || row.session_string || "",
+    // The database first. Signing in again through the web app writes the new
+    // session there -- but this used to prefer TELEGRAM_SESSION_STRING, so the
+    // next restart loaded the old, already-invalidated env session straight
+    // back and a fresh login never survived a deploy. The env var is now only
+    // a first-boot seed for a database that has never held a session.
+    sessionString: row.session_string || config.telegramSession || "",
     storageChatId: row.storage_chat_id || "",
   };
 }

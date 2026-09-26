@@ -106,7 +106,12 @@ app.get(
     // The one route without an API key, safe to poll from the UI.
     res.json({
       success: true,
-      telegram: await telegram.isAuthorized(),
+      // Never isAuthorized() here: that opens a Telegram connection, and
+      // Railway polls this on the NEW container during a deploy while the old
+      // one is still connected -- two connections on one session is what got
+      // the userbot signed out on deploy after deploy. This reports what the
+      // worker last saw instead, and does not touch Telegram at all.
+      telegram: telegram.knownAuthorized() ?? false,
       r2: await r2.ping(),
       takeout: takeout.isTakeoutActive(),
     });

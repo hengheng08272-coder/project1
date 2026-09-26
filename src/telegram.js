@@ -1,5 +1,7 @@
 /** Telegram userbot (teleproto, the maintained GramJS fork): one shared
  * client, plus the interactive login flow. */
+import os from "node:os";
+
 import { Api, TelegramClient } from "teleproto";
 import { StringSession } from "teleproto/sessions/index.js";
 
@@ -69,7 +71,113 @@ function newClientFor(conf) {
  * two containers on the same session string, which killed the userbot until
  * somebody signed it in again. No update loop, no such call.
  */
+// ------------------------------------------------------------ session lease
+//
+// Telegram invalidates a session the instant the same auth key is connected
+// from two places. A Railway deploy starts the new container before stopping
+// the old one, and the new one used to connect straight away -- the health
+// check itself did it -- so for a few seconds both held the session, and
+// Telegram signed the userbot out. Every deploy was a coin toss.
+//
+// So no process opens a Telegram connection without first holding the
+// "telegram-userbot" lease (see the service_leases migration). The old
+// container keeps renewing it until it is told to stop, then lets go; the
+// new one waits for that instead of colliding with it. A holder that
+// crashes simply lets its lease run out.
+const LEASE_NAME = "telegram-userbot";
+const LEASE_TTL_SECONDS = 30;
+const LEASE_RENEW_MS = 10_000;
+const LEASE_HOLDER = `${process.env.RAILWAY_DEPLOYMENT_ID || os.hostname()}:${process.pid}:${Math.random()
+  .toString(36)
+  .slice(2, 8)}`;
+
+let leaseHeld = false;
+let leaseWaiter = null;
+let leaseTimer = null;
+
+export class TelegramBusyError extends Error {
+  constructor() {
+    super("Telegram is still held by the previous server instance -- try again in a moment.");
+    this.name = "TelegramBusyError";
+  }
+}
+
+async function tryAcquireLease() {
+  const { data, error } = await db().rpc("acquire_lease", {
+    p_name: LEASE_NAME,
+    p_holder: LEASE_HOLDER,
+    p_ttl_seconds: LEASE_TTL_SECONDS,
+  });
+  if (error) throw new Error(`Lease check failed: ${error.message}`);
+  return data === true;
+}
+
+/** Keeps the lease alive; if it is ever lost, drops every connection at once. */
+function startLeaseRenewal() {
+  if (leaseTimer) return;
+  leaseTimer = setInterval(async () => {
+    try {
+      if (await tryAcquireLease()) return;
+      // Someone else holds it now -- carrying on would be the exact collision
+      // this exists to prevent, so disconnect rather than risk the session.
+      console.error("Telegram lease was lost to another instance -- disconnecting.");
+      leaseHeld = false;
+      await disconnectClients();
+    } catch (err) {
+      // A blip reaching the database: the 30s TTL covers a missed renewal or
+      // two, so this is not a reason to tear anything down.
+      console.error("Telegram lease renewal failed:", err?.message ?? err);
+    }
+  }, LEASE_RENEW_MS);
+  leaseTimer.unref?.();
+}
+
+/**
+ * Resolves once this process holds the lease, waiting up to `maxWaitMs` for
+ * the previous holder to let go. Concurrent callers share one wait.
+ */
+export async function ensureLease(maxWaitMs = 60_000) {
+  if (leaseHeld) return;
+  if (!leaseWaiter) {
+    leaseWaiter = (async () => {
+      const deadline = Date.now() + maxWaitMs;
+      for (;;) {
+        if (await tryAcquireLease()) {
+          leaseHeld = true;
+          startLeaseRenewal();
+          return;
+        }
+        if (Date.now() >= deadline) throw new TelegramBusyError();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    })().finally(() => {
+      leaseWaiter = null;
+    });
+  }
+  return leaseWaiter;
+}
+
+export function holdsLease() {
+  return leaseHeld;
+}
+
+async function releaseLease() {
+  if (leaseTimer) clearInterval(leaseTimer);
+  leaseTimer = null;
+  if (!leaseHeld) return;
+  leaseHeld = false;
+  await db()
+    .rpc("release_lease", { p_name: LEASE_NAME, p_holder: LEASE_HOLDER })
+    .then(null, () => {});
+}
+
+async function disconnectClients() {
+  const all = [client, ...extraClients.values()].filter(Boolean);
+  await Promise.all(all.map((c) => c.disconnect().catch(() => {})));
+}
+
 async function connectQuietly(c) {
+  await ensureLease();
   if (!c.connected) await c.connect();
   try {
     c.updateManager?.stop?.();
@@ -81,8 +189,10 @@ async function connectQuietly(c) {
 
 /** Closes every Telegram connection this process holds. */
 export async function disconnectAll() {
-  const all = [client, ...extraClients.values()].filter(Boolean);
-  await Promise.all(all.map((c) => c.disconnect().catch(() => {})));
+  await disconnectClients();
+  // Only after the connections are closed: handing the lease over first would
+  // let the next instance connect while ours is still open.
+  await releaseLease();
 }
 
 export async function getClient({ requireAuth = true, accountId = null } = {}) {
@@ -112,13 +222,26 @@ export async function getClient({ requireAuth = true, accountId = null } = {}) {
   return extra;
 }
 
+// The last answer isAuthorized() got, per account, so the health check can
+// report it without opening a connection of its own (see /health).
+const lastAuthorized = new Map();
+
 export async function isAuthorized(accountId = null) {
   try {
     const c = await getClient({ requireAuth: false, accountId });
-    return await c.isUserAuthorized();
-  } catch {
+    const ok = await c.isUserAuthorized();
+    lastAuthorized.set(accountId ?? "", ok);
+    return ok;
+  } catch (err) {
+    // Waiting on the lease is not being signed out; don't record it as one.
+    if (!(err instanceof TelegramBusyError)) lastAuthorized.set(accountId ?? "", false);
     return false;
   }
+}
+
+/** The last known sign-in state, or null before the first check. Never connects. */
+export function knownAuthorized(accountId = null) {
+  return lastAuthorized.has(accountId ?? "") ? lastAuthorized.get(accountId ?? "") : null;
 }
 
 /** Starts the login by asking Telegram to send the confirmation code, for the default account or a specific extra one. */
@@ -129,10 +252,40 @@ export async function sendCode(accountId = null) {
   const phone = accountId ? conf?.phone : conf.phone;
   if (!conf || !phone) throw new Error("No phone number is configured.");
 
-  const c = await getClient({ requireAuth: false, accountId });
+  const c = await loginClient({ accountId, apiId, apiHash });
   const { phoneCodeHash } = await c.sendCode({ apiId: Number(apiId), apiHash }, phone);
-  pending[accountId || ""] = { phone, phoneCodeHash };
+  // The code is bound to the connection that asked for it, so verifyCode must
+  // use this exact client, not whatever getClient() happens to return later.
+  pending[accountId || ""] = { phone, phoneCodeHash, client: c };
   return { success: true, phone };
+}
+
+/**
+ * The client to sign in with. A session Telegram has invalidated cannot sign
+ * in again -- its auth key is revoked, so asking it for a login code fails --
+ * and that is exactly the state someone is in when they come here to
+ * reconnect. So unless the current client is still signed in, this starts
+ * over on a brand-new, empty session: a fresh auth key nothing else has ever
+ * used. It also replaces the dead client, which otherwise kept reconnecting
+ * on every worker pass.
+ */
+async function loginClient({ accountId, apiId, apiHash }) {
+  const current = accountId ? extraClients.get(accountId) : client;
+  if (current) {
+    try {
+      await connectQuietly(current);
+      if (await current.isUserAuthorized()) return current;
+    } catch {
+      // Dead key -- falls through to a fresh session below.
+    }
+    await current.disconnect().catch(() => {});
+  }
+
+  const fresh = newClientFor({ apiId, apiHash, sessionString: "" });
+  if (accountId) extraClients.set(accountId, fresh);
+  else client = fresh;
+  await connectQuietly(fresh);
+  return fresh;
 }
 
 /** Completes the login, asking for the 2FA password when Telegram wants one. */
@@ -140,8 +293,9 @@ export async function verifyCode(code, password, accountId = null) {
   const conf = accountId ? await telegramAccountById(accountId) : await telegramSettings();
   const apiId = accountId ? conf?.api_id : conf.apiId;
   const apiHash = accountId ? conf?.api_hash : conf.apiHash;
-  const c = await getClient({ requireAuth: false, accountId });
   const slot = pending[accountId || ""] || {};
+  // The client that requested the code; a different one cannot redeem it.
+  const c = slot.client || (await getClient({ requireAuth: false, accountId }));
   const phone = slot.phone || (accountId ? conf?.phone : conf.phone);
 
   try {

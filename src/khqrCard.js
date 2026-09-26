@@ -26,9 +26,22 @@ const RED = [225, 27, 36];
 const WHITE = [255, 255, 255];
 const DASH = [220, 220, 220];
 
-let logoCache = null;
+// undefined = not tried yet; null = tried and unavailable.
+let logoCache;
+/**
+ * The KHQR mark, or null when it cannot be read. A missing decoration must
+ * never stop someone paying: without the file, the ticket is drawn with a
+ * plain red band and the QR still works.
+ */
 function khqrLogo() {
-  if (!logoCache) logoCache = PNG.sync.read(fs.readFileSync(LOGO_PATH));
+  if (logoCache === undefined) {
+    try {
+      logoCache = PNG.sync.read(fs.readFileSync(LOGO_PATH));
+    } catch (err) {
+      console.error("KHQR logo unavailable, drawing the ticket without it:", err?.message ?? err);
+      logoCache = null;
+    }
+  }
   return logoCache;
 }
 
@@ -165,9 +178,11 @@ export async function renderKhqrCard(payload, { width = 360 } = {}) {
 
   // The KHQR mark, recoloured white so it reads on the red band.
   const logo = khqrLogo();
-  const logoW = Math.round(width * 0.3);
-  const logoH = Math.max(1, Math.round((logo.height / logo.width) * logoW));
-  composite(card, resample(logo, logoW, logoH), Math.round((width - logoW) / 2), Math.round((headerH - logoH) / 2), WHITE);
+  if (logo) {
+    const logoW = Math.round(width * 0.3);
+    const logoH = Math.max(1, Math.round((logo.height / logo.width) * logoW));
+    composite(card, resample(logo, logoW, logoH), Math.round((width - logoW) / 2), Math.round((headerH - logoH) / 2), WHITE);
+  }
 
   // Dashed rule, exactly as the ticket prints it.
   for (let x = pad; x < width - pad; x += 1) {

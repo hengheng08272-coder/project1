@@ -7,7 +7,7 @@ import { applyAutoRules, processQueue, requeueOrphanedDownloads } from "./downlo
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
 import { scanGroup } from "./scanner.js";
-import { isAuthorized, listAccounts } from "./telegram.js";
+import { holdsLease, isAuthorized, listAccounts } from "./telegram.js";
 import * as urlfetch from "./urlfetch.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,9 +33,14 @@ async function anyAccountAuthorized() {
   const now = Date.now();
   if (now - lastSignedOutWarningAt > SIGNED_OUT_WARNING_MS) {
     lastSignedOutWarningAt = now;
+    // Not holding the lease means the previous instance has not let go yet --
+    // a deploy in progress, not a signed-out account. Saying "sign in again"
+    // then would send someone to fix a session that is fine.
     console.warn(
-      "No Telegram account is signed in -- scanning and downloading are paused. " +
-        "Sign in again under Settings -> Telegram."
+      holdsLease()
+        ? "No Telegram account is signed in -- scanning and downloading are paused. " +
+            "Sign in again under Settings -> Telegram."
+        : "Waiting for the previous server instance to release Telegram."
     );
   }
   return false;

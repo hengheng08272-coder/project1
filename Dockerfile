@@ -23,6 +23,10 @@ COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
 COPY src ./src
+# Images the service draws with (the KHQR mark on the payment ticket). Only
+# src/ used to be copied, so the logo never reached the container and every
+# tap on "Buy" crashed on a missing file.
+COPY assets ./assets
 
 EXPOSE 8000
 CMD ["node", "src/server.js"]
