@@ -7,8 +7,10 @@
 import cors from "cors";
 import express from "express";
 
+import QRCode from "qrcode";
+
 import { config } from "./config.js";
-import { db, nowIso, upsertSingle } from "./db.js";
+import { db, nowIso, rows, upsertSingle } from "./db.js";
 import { applyAutoRules, retryFailed, runDownload } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
@@ -761,6 +763,103 @@ app.post(
     res.json({ success: true, ...result });
   })
 );
+
+/**
+ * The payment page a bot button opens.
+ *
+ * Telegram only accepts http/https in an inline button, so `abamobilebank://`
+ * can never be a button URL -- this page is the bridge: it loads over https
+ * and then hands the phone the deeplink. The link shape is ABA's own
+ * (abamobilebank://ababank.com?type=payway&qrcode=<KHQR>), the same thing
+ * PayWay's API returns as `abapay_deeplink`, so it needs no merchant account
+ * of ours: the payload is this order's own KHQR.
+ *
+ * Public on purpose, and no requireApiKey: a payer opens it in whatever
+ * browser Telegram hands them. All it reveals is a request to pay the
+ * operator an exact amount -- which is what was just sent to that payer
+ * anyway -- and nothing about who ordered it.
+ */
+app.get(
+  "/pay/:orderId",
+  route(async (req, res) => {
+    const [order] = rows(
+      await db()
+        .from("bot_orders")
+        .select("ticket, amount_usd, khqr, status, package:bot_packages(title_km, title_en)")
+        .eq("id", req.params.orderId)
+        .limit(1)
+    );
+    if (!order) return res.status(404).type("html").send(payShell("រកមិនឃើញ", "<p>This payment link is not valid.</p>"));
+
+    if (order.status !== "pending") {
+      const done = order.status === "paid";
+      return res.type("html").send(
+        payShell(
+          done ? "បានទូទាត់រួច" : "ផុតកំណត់",
+          `<p class="big">${done ? "✅ បានទូទាត់រួចរាល់" : "⏱ តំណនេះផុតកំណត់ហើយ"}</p>
+           <p class="sub">${done ? "Payment already confirmed." : "This payment link has expired — start a new order in the bot."}</p>`
+        )
+      );
+    }
+
+    const deeplink = `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(order.khqr)}`;
+    const qr = await QRCode.toDataURL(order.khqr, { width: 620, margin: 2, errorCorrectionLevel: "M" });
+    const amount = Number(order.amount_usd).toFixed(2);
+    const name = order.package?.title_km || order.package?.title_en || "";
+    // ?view=qr is the second button: show the QR to save or scan from another
+    // phone, with no jump into ABA.
+    const autoOpen = req.query.view !== "qr";
+
+    res.type("html").send(
+      payShell(
+        `$${amount}`,
+        `<p class="amount">$${amount} <span>USD</span></p>
+         <p class="sub">${escapeHtml(name)} · 🎫 ${escapeHtml(order.ticket)}</p>
+         <a class="btn aba" href="${escapeHtml(deeplink)}">📲 បើកកម្មវិធី ABA Mobile</a>
+         <p class="hint">ចំនួនទឹកប្រាក់កំណត់ស្រាប់ក្នុង QR — មិនបាច់វាយលេខទេ</p>
+         <img class="qr" src="${qr}" alt="KHQR" />
+         <p class="hint">💾 រក្សាទុករូបនេះ រួចស្កេនដោយកម្មវិធីធនាគារណាមួយដែលមាន KHQR<br/>
+            <span class="en">Save this QR and scan it with any KHQR bank app</span></p>
+         <p class="hint">បន្ទាប់ពីបង់រួច ផ្ញើ screenshot ទៅ bot វិញ</p>`,
+        autoOpen ? deeplink : null
+      )
+    );
+  })
+);
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+/** One small self-contained page -- a payer may be on a slow phone connection. */
+function payShell(title, body, autoOpen = null) {
+  return `<!doctype html>
+<html lang="km"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapeHtml(title)}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         font-family: -apple-system, "Noto Sans Khmer", system-ui, sans-serif;
+         background:#f4f5f7; color:#111; padding:20px; }
+  @media (prefers-color-scheme: dark) { body { background:#111417; color:#f2f2f2; } .card { background:#1b1f24 !important; } }
+  .card { background:#fff; border-radius:20px; padding:26px 22px; max-width:400px; width:100%;
+          text-align:center; box-shadow:0 12px 36px rgba(0,0,0,.12); }
+  .amount { font-size:38px; font-weight:800; margin:4px 0 2px; }
+  .amount span { font-size:15px; font-weight:600; opacity:.6; }
+  .big { font-size:22px; font-weight:700; }
+  .sub { opacity:.7; font-size:14px; margin:0 0 18px; }
+  .btn { display:block; padding:15px; border-radius:14px; font-size:16px; font-weight:700;
+         text-decoration:none; margin:14px 0 6px; }
+  .aba { background:#0f2f5f; color:#fff; }
+  .qr { width:100%; max-width:300px; border-radius:14px; margin:14px auto 6px; display:block; background:#fff; padding:8px; }
+  .hint { font-size:12.5px; opacity:.65; line-height:1.7; margin:8px 0; }
+  .en { opacity:.75; }
+</style></head>
+<body><div class="card">${body}</div>
+${autoOpen ? `<script>setTimeout(function(){ location.href = ${JSON.stringify(autoOpen)}; }, 350);</script>` : ""}
+</body></html>`;
+}
 
 /**
  * Telegram calls this with every update sent to the notification bot --

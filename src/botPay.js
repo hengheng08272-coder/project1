@@ -39,10 +39,12 @@ const L = {
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 លេខសំបុត្រ៖ ${ticket}\n\n` +
-      `1️⃣ ស្កេន QR នេះក្នុង ABA ឬធនាគារណាមួយ (តម្លៃកំណត់រួចហើយ)\n` +
-      `2️⃣ បង់ប្រាក់\n` +
+      `1️⃣ ចុច "បើក ABA Mobile" ខាងក្រោម (ឬស្កេន QR ដោយធនាគារណាមួយ)\n` +
+      `2️⃣ បង់ប្រាក់ — ចំនួនកំណត់ស្រាប់ហើយ\n` +
       `3️⃣ ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ\n\n` +
       `⏱ QR នេះមានសុពលភាព ៦០ នាទី។`,
+    openAba: "📲 បើកកម្មវិធី ABA Mobile",
+    saveQr: "💾 រក្សាទុក QR · ធនាគារផ្សេង",
     cancel: "❌ បោះបង់",
     cancelled: "បានបោះបង់ការបញ្ជាទិញ។",
     screenshotReceived: "✅ ទទួលបាន screenshot។ កំពុងរង់ចាំការបញ្ជាក់ — ជាធម្មតាតិចជាងពីរបីនាទី។",
@@ -57,10 +59,12 @@ const L = {
     notReady: "Payments aren't set up yet. Please contact the operator.",
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 Ticket: ${ticket}\n\n` +
-      `1️⃣ Scan this QR in ABA or any Bakong bank (the amount is already set)\n` +
-      `2️⃣ Pay\n` +
+      `1️⃣ Tap "Open ABA Mobile" below (or scan the QR with any bank)\n` +
+      `2️⃣ Pay — the amount is already set\n` +
       `3️⃣ Send the receipt screenshot here\n\n` +
       `⏱ This QR is valid for 60 minutes.`,
+    openAba: "📲 Open ABA Mobile",
+    saveQr: "💾 Save QR · other banks",
     cancel: "❌ Cancel",
     cancelled: "Order cancelled.",
     screenshotReceived: "✅ Screenshot received. Waiting for confirmation — usually a few minutes.",
@@ -193,8 +197,22 @@ async function startOrder(chatId, user, packageId) {
   );
 
   const png = await QRCode.toBuffer(built.payload, { type: "png", width: 720, margin: 2, errorCorrectionLevel: "M" });
+
+  // ABA's own deeplink (abamobilebank://...) cannot go in a Telegram button --
+  // Telegram only accepts http/https there -- so both buttons point at the
+  // backend's /pay page, which carries the phone the rest of the way. Without
+  // a public URL configured there is nowhere to point, so the QR goes out on
+  // its own rather than with buttons that would 404.
+  const keyboard = [];
+  if (config.publicUrl) {
+    const payUrl = `${config.publicUrl.replace(/\/$/, "")}/pay/${order.id}`;
+    keyboard.push([{ text: s.openAba, url: payUrl }]);
+    keyboard.push([{ text: s.saveQr, url: `${payUrl}?view=qr` }]);
+  }
+  keyboard.push([{ text: s.cancel, callback_data: `bot:cancel:${order.id}` }]);
+
   await sendPhotoBuffer(chatId, png, s.qrCaption(packageTitle(pkg, user.language), amount.toFixed(2), ticket), {
-    inline_keyboard: [[{ text: s.cancel, callback_data: `bot:cancel:${order.id}` }]],
+    inline_keyboard: keyboard,
   });
 }
 
