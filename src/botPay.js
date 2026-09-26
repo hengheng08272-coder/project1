@@ -15,11 +15,11 @@
 import jpeg from "jpeg-js";
 import jsQR from "jsqr";
 import { PNG } from "pngjs";
-import QRCode from "qrcode";
 
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { applyKhqrTemplate, khqrMd5, validateKhqrTemplate } from "./khqr.js";
+import { renderKhqrCard } from "./khqrCard.js";
 import { call } from "./notifyBot.js";
 
 // A payer has this long to pay one QR before the order lapses. Bakong
@@ -196,7 +196,10 @@ async function startOrder(chatId, user, packageId) {
       .select("*")
   );
 
-  const png = await QRCode.toBuffer(built.payload, { type: "png", width: 720, margin: 2, errorCorrectionLevel: "M" });
+  // The KHQR ticket rather than a bare 720px square: it is what a bank's own
+  // QR looks like, and at 360px it sits in the chat at a sensible size
+  // instead of filling the screen.
+  const png = await renderKhqrCard(built.payload, { width: 360 });
 
   // ABA's own deeplink (abamobilebank://...) cannot go in a Telegram button --
   // Telegram only accepts http/https there -- so both buttons point at the

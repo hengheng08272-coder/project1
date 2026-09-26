@@ -11,6 +11,7 @@ import QRCode from "qrcode";
 
 import { config } from "./config.js";
 import { db, nowIso, rows, upsertSingle } from "./db.js";
+import { parseKhqr } from "./khqr.js";
 import { applyAutoRules, retryFailed, runDownload } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
@@ -805,6 +806,10 @@ app.get(
     const deeplink = `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(order.khqr)}`;
     const qr = await QRCode.toDataURL(order.khqr, { width: 620, margin: 2, errorCorrectionLevel: "M" });
     const amount = Number(order.amount_usd).toFixed(2);
+    // Tag 59 is the payee name the bank itself will show -- printing the same
+    // one here means the page and the banking app agree, which is the thing a
+    // payer actually checks before paying.
+    const merchantName = parseKhqr(order.khqr)?.find((f) => f.tag === "59")?.value ?? "";
     const name = order.package?.title_km || order.package?.title_en || "";
     // ?view=qr is the second button: show the QR to save or scan from another
     // phone, with no jump into ABA.
@@ -817,7 +822,7 @@ app.get(
          <p class="sub">${escapeHtml(name)} · 🎫 ${escapeHtml(order.ticket)}</p>
          <a class="btn aba" href="${escapeHtml(deeplink)}">📲 បើកកម្មវិធី ABA Mobile</a>
          <p class="hint">ចំនួនទឹកប្រាក់កំណត់ស្រាប់ក្នុង QR — មិនបាច់វាយលេខទេ</p>
-         <img class="qr" src="${qr}" alt="KHQR" />
+         ${khqrTicket(merchantName, amount, qr)}
          <p class="hint">💾 រក្សាទុករូបនេះ រួចស្កេនដោយកម្មវិធីធនាគារណាមួយដែលមាន KHQR<br/>
             <span class="en">Save this QR and scan it with any KHQR bank app</span></p>
          <p class="hint">បន្ទាប់ពីបង់រួច ផ្ញើ screenshot ទៅ bot វិញ</p>`,
@@ -826,6 +831,24 @@ app.get(
     );
   })
 );
+
+/**
+ * The KHQR ticket, ported from the telegrambot- app's KhqrCard component:
+ * red band with its clipped corner, payee name, amount, dashed rule, QR.
+ * A generated payload renders as a bare square otherwise, which reads as
+ * less trustworthy at the exact moment somebody is handing over money.
+ */
+function khqrTicket(merchantName, amount, qrDataUrl) {
+  return `<div class="ticket">
+  <div class="ticket-band">KHQR</div>
+  <div class="ticket-body">
+    <p class="ticket-name">${escapeHtml(merchantName)}</p>
+    <p class="ticket-amount">${escapeHtml(amount)}<span>USD</span></p>
+    <div class="ticket-rule"></div>
+    <img src="${qrDataUrl}" alt="KHQR" />
+  </div>
+</div>`;
+}
 
 const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -852,7 +875,23 @@ function payShell(title, body, autoOpen = null) {
   .btn { display:block; padding:15px; border-radius:14px; font-size:16px; font-weight:700;
          text-decoration:none; margin:14px 0 6px; }
   .aba { background:#0f2f5f; color:#fff; }
-  .qr { width:100%; max-width:300px; border-radius:14px; margin:14px auto 6px; display:block; background:#fff; padding:8px; }
+  /* The KHQR ticket, same proportions as the app's KhqrCard. A bank ticket
+     is set in a plain sans, not in a display face -- it should look like the
+     ticket the payer's own banking app prints. */
+  .ticket { width:100%; max-width:244px; margin:14px auto 6px; background:#fff; border-radius:16px;
+            overflow:hidden; box-shadow:0 16px 40px rgba(0,0,0,.35);
+            font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .ticket-band { background:#E11B24; color:#fff; font-weight:900; letter-spacing:.14em; font-size:13px;
+                 text-align:center; padding:7px 14px;
+                 clip-path:polygon(0 0, 100% 0, 100% 55%, 88% 100%, 0 100%); }
+  .ticket-body { padding:10px 14px 14px; }
+  .ticket-name { margin:0; text-align:left; font-weight:700; font-size:13px; color:#1A1A1A;
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ticket-amount { margin:0; text-align:left; font-weight:800; font-size:20px; line-height:1.15; color:#111;
+                   font-variant-numeric:tabular-nums; }
+  .ticket-amount span { margin-left:4px; font-weight:600; font-size:12px; color:#8A8A8A; }
+  .ticket-rule { border-top:1px dashed #DCDCDC; margin:10px 0; }
+  .ticket img { display:block; width:100%; }
   .hint { font-size:12.5px; opacity:.65; line-height:1.7; margin:8px 0; }
   .en { opacity:.75; }
 </style></head>
