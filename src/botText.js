@@ -130,7 +130,10 @@ const TEXT = {
       `🔒 ក្រុម / channel ឯកជន (t.me/c/...)\n` +
       `🎬 វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
       `⚡ ផ្ញើមកវិញភ្លាម (មិនបាច់រង់ចាំទាញយក)\n\n` +
-      `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
+      `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ\n\n` +
+      `➕ ចង់ទាញពីក្រុមឯកជនរបស់អ្នកផ្ទាល់? ភ្ជាប់គណនី Telegram\n` +
+      `      របស់អ្នកក្នុង 🖥 បើកកម្មវិធី → ការកំណត់ → Telegram\n` +
+      `      (ស្ម័គ្រចិត្ត — មិនភ្ជាប់ក៏ប្រើក្រុមរបស់យើងបានដែរ)`,
     premiumScreenLocked: () =>
       `👑 Premium — Telegram ឯកជន\n\n` +
       `🔒 មុខងារនេះត្រូវការគណនីភ្ជាប់ (VIP)\n\n` +
@@ -211,7 +214,10 @@ const TEXT = {
       `🔒 Private groups / channels (t.me/c/...)\n` +
       `🎬 Full-size video — no 50MB limit\n` +
       `⚡ Delivered instantly, nothing to wait for\n\n` +
-      `👉 Open the video post → tap it → Copy Link → send it here`,
+      `👉 Open the video post → tap it → Copy Link → send it here\n\n` +
+      `➕ Want your own private groups? Link your Telegram account\n` +
+      `      in 🖥 Open app → Settings → Telegram\n` +
+      `      (optional — our groups work without it)`,
     premiumScreenLocked: () =>
       `👑 Premium — private Telegram\n\n` +
       `🔒 This needs a linked (VIP) account\n\n` +
