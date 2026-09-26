@@ -7,10 +7,39 @@ import { applyAutoRules, processQueue, requeueOrphanedDownloads } from "./downlo
 import * as forwarder from "./forwarder.js";
 import * as mirror from "./mirror.js";
 import { scanGroup } from "./scanner.js";
-import { isAuthorized } from "./telegram.js";
+import { isAuthorized, listAccounts } from "./telegram.js";
 import * as urlfetch from "./urlfetch.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Whether ANY Telegram account can work right now.
+ *
+ * This used to ask only the default account, so when its session died every
+ * group stopped -- including the ones scanned and downloaded by the second
+ * account, which was perfectly fine. Worse, it failed silently: seven
+ * downloads sat queued for half an hour with nothing in the log to say why.
+ * Now one dead account only costs its own groups, and the reason is logged
+ * (once every few minutes, not every pass).
+ */
+let lastSignedOutWarningAt = 0;
+const SIGNED_OUT_WARNING_MS = 5 * 60 * 1000;
+
+async function anyAccountAuthorized() {
+  if (await isAuthorized()) return true;
+  for (const account of await listAccounts()) {
+    if (account.connected && (await isAuthorized(account.id))) return true;
+  }
+  const now = Date.now();
+  if (now - lastSignedOutWarningAt > SIGNED_OUT_WARNING_MS) {
+    lastSignedOutWarningAt = now;
+    console.warn(
+      "No Telegram account is signed in -- scanning and downloading are paused. " +
+        "Sign in again under Settings -> Telegram."
+    );
+  }
+  return false;
+}
 
 /** Runs one pass every WORKER_INTERVAL seconds until the process stops. */
 export async function loop() {
@@ -39,7 +68,7 @@ export async function loop() {
       const paid = await botPay.checkPendingOrders();
       if (paid) console.log(`Bakong confirmed ${paid} bot order(s)`);
 
-      if (await isAuthorized()) await onePass();
+      if (await anyAccountAuthorized()) await onePass();
     } catch (err) {
       // A bad pass must never kill the loop.
       console.error("Worker pass failed:", err?.message ?? err);
