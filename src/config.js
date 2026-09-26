@@ -69,16 +69,16 @@ export const config = {
   publicUrl:
     str("PUBLIC_URL") ||
     (str("RAILWAY_PUBLIC_DOMAIN") ? `https://${str("RAILWAY_PUBLIC_DOMAIN")}` : ""),
-  // How many downloads a new bot user gets before the bot asks them to talk
-  // to the operator. Referring someone adds REFERRAL_BONUS more.
+  // The SaveIt Pro free trial: how many Telegram videos a new bot user gets
+  // before a pack or VIP is needed. Referring someone adds REFERRAL_BONUS.
   botFreeDownloads: int("BOT_FREE_DOWNLOADS", 10),
   botReferralBonus: int("BOT_REFERRAL_BONUS", 5),
-  // Who may send the bot a link to a PRIVATE Telegram chat (t.me/c/...).
-  // The bot fetches those through the operator's own accounts, so without a
-  // limit anyone holding one link into a paid VIP group could take its
-  // videos for free. "vip" (default): bot VIP users and the operator only;
-  // "all": anyone; "admin": the operator only.
-  botPrivateLinks: str("BOT_PRIVATE_LINKS", "vip"),
+  // How the bot treats Telegram links (SaveIt Pro). They run through the
+  // operator's own accounts, so without a meter anyone holding one link into
+  // a paid VIP group could take its videos for free. "trial" (default):
+  // BOT_FREE_DOWNLOADS free, then packs or VIP; "all": anyone, uncounted;
+  // "admin": the operator only. YouTube/FB/TikTok are never metered.
+  botPrivateLinks: str("BOT_PRIVATE_LINKS", "trial"),
   // Shared secret a phone-automation app (Tasker/MacroDroid/...) presents
   // when POSTing a raw ABA payment-notification text to /api/subscription/aba-ingest.
   // Unset means the endpoint refuses everything -- fail-closed on purpose.

@@ -16,7 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
-import { actionForLabel, languageKeyboard, mainKeyboard, texts } from "./botText.js";
+import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } from "./botText.js";
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
@@ -149,9 +149,15 @@ async function incrementUsage(telegramUserId, existing) {
 }
 
 /**
- * What this person may still download. Free allowance + referral bonus +
- * whatever they bought all pool into one number; a running VIP period
- * means no limit at all (left is Infinity, and nothing is counted down).
+ * What this person may still download from TELEGRAM -- the only thing that
+ * is counted. YouTube, Facebook, TikTok and the rest are free and unlimited,
+ * because they cost nothing but bandwidth; a Telegram link runs through the
+ * operator's own accounts and can pull a paid group's videos, so that is
+ * what the trial and the packs meter.
+ *
+ * The free trial (BOT_FREE_DOWNLOADS), referral bonus and bought packs all
+ * pool into one number; a running VIP period means no limit at all (left is
+ * Infinity, and nothing is counted down).
  */
 async function quotaFor(user) {
   const usage = await usageFor(user.telegram_user_id);
@@ -177,8 +183,8 @@ async function showAccount(chatId, user) {
     `├ ${t.fieldUsername}: ${user.username ? "@" + user.username : "—"}`,
     `├ ${t.fieldLanguage}: ${user.language === "en" ? "English" : "ភាសាខ្មែរ"}`,
     `├ ${t.fieldPlan}: ${quota.premium ? t.planVip(new Date(user.premium_until).toISOString().slice(0, 10)) : t.planFree}`,
-    `├ ${t.fieldUsed}: ${quota.used}`,
-    `└ ${t.fieldQuota}: ${quota.premium ? t.unlimited : `${quota.left} / ${quota.total}`}`,
+    `├ 🆓 YT · FB · IG · TikTok: ♾ ${t.unlimited}`,
+    `└ 👑 Telegram: ${quota.premium ? `♾ ${t.unlimited}` : `${progressBar(quota.used, quota.total)} ${quota.left} / ${quota.total}`}`,
   ];
   await send(chatId, lines.join("\n"));
 }
@@ -262,20 +268,10 @@ export async function handleMessage(message) {
       return send(chatId, t.languagePrompt, { reply_markup: languageKeyboard() });
     case "help":
       return send(chatId, t.help);
-    case "free": {
-      const quota = await quotaFor(user);
-      return send(chatId, t.freeScreen(quota.premium ? t.unlimited : quota.left));
-    }
-    case "premium": {
-      const quota = await quotaFor(user);
-      // "Linked" here means VIP: the private-Telegram path runs through the
-      // operator's own accounts, so it is gated the same way BOT_PRIVATE_LINKS
-      // gates a pasted t.me/c link -- no point offering a door that will not open.
-      return send(
-        chatId,
-        mayUsePrivateLinks(chatId, quota) ? t.premiumScreenOpen() : t.premiumScreenLocked()
-      );
-    }
+    case "free":
+      return send(chatId, t.freeScreen());
+    case "premium":
+      return send(chatId, await proScreen(user, t));
     case "buy": {
       const quota = await quotaFor(user);
       return botPay.showPackages(chatId, user, quota.left);
@@ -292,24 +288,19 @@ export async function handleMessage(message) {
     return;
   }
 
-  const quota = await quotaFor(user);
-  if (quota.left <= 0) {
-    await send(chatId, t.quotaOver(quota.total));
-    return;
-  }
-
   // "…link audio" (or ជាសំឡេង) asks for the soundtrack only -- the same
   // audio_only quality the web app's quick-download box offers.
   const audioOnly = /\b(audio|mp3|សំឡេង)\b/i.test(text.replace(url, ""));
 
+  // SaveIt Pro: a Telegram link is metered (see quotaFor).
   if (/^https?:\/\/(t\.me|telegram\.me)\//i.test(url)) {
-    await sendTelegramPost(chatId, user, url, quota);
+    await sendTelegramPost(chatId, user, url, await quotaFor(user));
     return;
   }
 
+  // SaveIt Free: everything else, never counted.
   try {
     await botJobs.createUrlJob({ telegramUserId: user.telegram_user_id, chatId, url, audioOnly });
-    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
     await send(chatId, t.queued);
   } catch (err) {
     console.error("Bot URL job failed:", err?.message ?? err);
@@ -413,11 +404,30 @@ export async function handleCallback(cq) {
 const isAdminChat = (chatId) =>
   Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
 
-function mayUsePrivateLinks(chatId, quota) {
-  if (isAdminChat(chatId)) return true;
-  if (config.botPrivateLinks === "all") return true;
-  if (config.botPrivateLinks === "admin") return false;
-  return quota.premium;
+/**
+ * Whether a Telegram link may go through. The operator always may.
+ * BOT_PRIVATE_LINKS="admin" switches Telegram links off for everyone else;
+ * "all" lets everyone through uncounted; the default meters them against
+ * the free trial, referral bonus and bought packs, with VIP unlimited.
+ */
+function telegramAccess(chatId, quota) {
+  if (isAdminChat(chatId)) return "ok";
+  if (config.botPrivateLinks === "admin") return "off";
+  if (config.botPrivateLinks === "all") return "ok";
+  return quota.premium || quota.left > 0 ? "ok" : "used-up";
+}
+
+/** The Pro screen: trial progress, VIP, or trial spent. */
+async function proScreen(user, t) {
+  const quota = await quotaFor(user);
+  if (quota.premium) {
+    return t.proScreenVip(new Date(user.premium_until).toISOString().slice(0, 10)) + t.proOwnAccount;
+  }
+  if (quota.left <= 0) return t.proScreenEmpty(progressBar(quota.total, quota.total), quota.total);
+  return (
+    t.proScreenTrial(progressBar(quota.used, quota.total), quota.used, quota.total, quota.left) +
+    t.proOwnAccount
+  );
 }
 
 /**
@@ -444,10 +454,15 @@ async function sendTelegramPost(chatId, user, url, quota) {
     return;
   }
 
-  // A numeric chat id is a t.me/c/... link: a private group or channel that
-  // only the operator's accounts can read. See config.botPrivateLinks.
-  if (typeof parsed.chatId === "number" && !mayUsePrivateLinks(chatId, quota)) {
+  // Every Telegram link, public channel or private group alike, runs through
+  // the operator's own accounts -- so every one is metered, not just t.me/c.
+  const access = telegramAccess(chatId, quota);
+  if (access === "off") {
     await send(chatId, t.privateVipOnly);
+    return;
+  }
+  if (access === "used-up") {
+    await send(chatId, t.quotaOver(quota.total));
     return;
   }
 
