@@ -74,6 +74,8 @@ function formatForQuality(quality) {
       return "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best";
     case "audio_only":
       return "bestaudio/best";
+    case "small": // a short clip to cut from (the Emoji Maker): no audio needed
+      return "bestvideo[height<=480]/best[height<=480]/worst";
     default:
       return "bestvideo+bestaudio/best";
   }

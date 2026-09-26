@@ -33,6 +33,7 @@ const MENU = [
     aliases: ["👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
   },
   { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice · វិក្កយបត្រ", en: "🧾 KH Invoice" },
+  { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker · បង្កើត Emoji", en: "✨ Emoji Maker" },
   { action: "buy", emoji: "m_buy", km: "💎 ទិញ / VIP", en: "💎 Buy / VIP" },
   { action: "history", emoji: "m_history", km: "📜 ប្រវត្តិ", en: "📜 History" },
   { action: "referral", emoji: "m_referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
@@ -89,6 +90,7 @@ export function mainKeyboard(language) {
     [button("free")],
     [button("premium")],
     ...(config.khInvoiceBridgeSecret ? [[button("invoice")]] : []),
+    [button("emoji")],
     [button("account"), button("buy")],
     [button("history"), button("referral")],
     [button("language"), button("help")],
@@ -113,8 +115,8 @@ const TEXT = {
       `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់ ♾\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
       `{:m_pro:} SaveIt Pro — Telegram (ក្រុម/channel ឯកជន)\n` +
-      `      🎁 សាកល្បងឥតគិតថ្លៃ 10 វីដេអូ\n` +
-      `      🎬 វីដេអូពេញទំហំ គ្មានកម្រិត 50MB\n\n` +
+      `      {:gift:} សាកល្បងឥតគិតថ្លៃ 10 វីដេអូ\n` +
+      `      {:video:} វីដេអូពេញទំហំ គ្មានកម្រិត 50MB\n\n` +
       `គ្រាន់តែ ផ្ញើតំណមក ខ្ញុំធ្វើនៅសល់។`,
     help:
       `{:m_help:} របៀបប្រើ\n\n` +
@@ -137,13 +139,13 @@ const TEXT = {
     historyEmpty: "មិនទាន់មានការទាញយកទេ។ ផ្ញើតំណមកដើម្បីចាប់ផ្ដើម។",
     referralTitle: "កម្មវិធីណែនាំ",
     referralBody: (count, bonus, link) =>
-      `🎁 ណែនាំមិត្តម្នាក់ ទទួលបាន ${bonus} ការទាញយកបន្ថែម!\n\n` +
+      `{:gift:} ណែនាំមិត្តម្នាក់ ទទួលបាន ${bonus} ការទាញយកបន្ថែម!\n\n` +
       `📊 អ្នកបានណែនាំ៖ ${count} នាក់\n\n` +
-      `🔗 តំណណែនាំរបស់អ្នក៖\n${link}\n\n` +
+      `{:link:} តំណណែនាំរបស់អ្នក៖\n${link}\n\n` +
       `➡️ ចែករំលែកតំណនេះ — ពេលមិត្តចុច និងចាប់ផ្ដើមប្រើ អ្នកទទួលបានភ្លាម។`,
     referralJoined: (name) => `🎉 ${name} បានចូលរួមតាមតំណណែនាំរបស់អ្នក! អ្នកទទួលបានការទាញយកបន្ថែម។`,
     languagePrompt: "🌐 ជ្រើសរើសភាសា៖",
-    languageSet: "✅ បានប្ដូរទៅភាសាខ្មែរ។",
+    languageSet: "{:ok:} បានប្ដូរទៅភាសាខ្មែរ។",
     openApp: (url) => `🖥 បើកកម្មវិធីពេញលេញ៖\n${url}`,
     openAppMissing: "🖥 កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
     sendLink: "📥 ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
@@ -152,27 +154,27 @@ const TEXT = {
       `{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
-      `🔗 .mp4 · .m3u8 · .mp3\n` +
+      `{:link:} .mp4 · .m3u8 · .mp3\n` +
       `➕ គេហទំព័រជាង ១៨០០ ផ្សេងទៀត\n\n` +
       `♾ ទាញយកប៉ុន្មានក៏បាន — មិនគិតលុយ មិនកំណត់ចំនួន\n\n` +
       `👉 ផ្ញើតំណមកបានឥឡូវនេះ\n` +
       `💡 ចង់យកតែសំឡេង? សរសេរ audio បន្ទាប់ពីតំណ`,
     proScreenTrial: (bar, used, total, left) =>
       `{:m_pro:} SaveIt Pro — Telegram\n\n` +
-      `🎁 សាកល្បងឥតគិតថ្លៃ ${total} វីដេអូ\n` +
+      `{:gift:} សាកល្បងឥតគិតថ្លៃ ${total} វីដេអូ\n` +
       `${bar}  ${used}/${total}\n` +
-      `✅ នៅសល់ ${left} វីដេអូ\n\n` +
+      `{:ok:} នៅសល់ ${left} វីដេអូ\n\n` +
       `ទាញយកបានពី៖\n` +
-      `🔒 ក្រុម / channel ឯកជន (t.me/c/...)\n` +
+      `{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
       `📢 channel សាធារណៈ (t.me/...)\n` +
-      `🎬 វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
+      `{:video:} វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
       `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenVip: (until) =>
       `{:m_pro:} SaveIt Pro — VIP\n\n` +
       `♾ មិនកំណត់ រហូតដល់ ${until}\n\n` +
-      `🔒 ក្រុម / channel ឯកជន (t.me/c/...)\n` +
-      `🎬 វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
+      `{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
+      `{:video:} វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
       `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenEmpty: (bar, total) =>
@@ -180,28 +182,28 @@ const TEXT = {
       `${bar}  ${total}/${total}\n` +
       `⛔ អ្នកប្រើអស់វីដេអូឥតគិតថ្លៃហើយ\n\n` +
       `ដើម្បីបន្ត៖\n` +
-      `💎 ទិញកញ្ចប់វីដេអូ ឬ VIP មិនកំណត់\n` +
+      `{:diamond:} ទិញកញ្ចប់វីដេអូ ឬ VIP មិនកំណត់\n` +
       `👥 ណែនាំមិត្ត ១ នាក់ = +5 វីដេអូឥតគិតថ្លៃ\n\n` +
       `💡 YouTube · FB · IG · TikTok នៅតែ ឥតគិតថ្លៃ មិនកំណត់ ♾`,
     proOwnAccount:
       `\n\n➕ ចង់ទាញពីក្រុមឯកជនរបស់អ្នកផ្ទាល់? ភ្ជាប់គណនី Telegram\n` +
       `      ក្នុង 🖥 បើកកម្មវិធី → ការកំណត់ → Telegram (ស្ម័គ្រចិត្ត)`,
     notALink: "នោះមិនមែនជាតំណទេ។ សូមផ្ញើតំណដែលចាប់ផ្ដើមដោយ http:// ឬ https://។",
-    working: "⏳ កំពុងដំណើរការ… ខ្ញុំនឹងផ្ញើមកវិញពេលរួច។",
-    queued: "✅ បានបញ្ចូលក្នុងជួរ។ ខ្ញុំនឹងផ្ញើមកវិញពេលទាញយករួច (អាចចំណាយពេលពីរបីនាទីសម្រាប់វីដេអូវែង)។",
+    working: "{:wait:} កំពុងដំណើរការ… ខ្ញុំនឹងផ្ញើមកវិញពេលរួច។",
+    queued: "{:ok:} បានបញ្ចូលក្នុងជួរ។ ខ្ញុំនឹងផ្ញើមកវិញពេលទាញយករួច (អាចចំណាយពេលពីរបីនាទីសម្រាប់វីដេអូវែង)។",
     quotaOver: (total) =>
       `⛔ អ្នកប្រើអស់ ${total} វីដេអូ Telegram ឥតគិតថ្លៃហើយ។\n\n` +
-      `💎 ទិញ / VIP ដើម្បីបន្ត ឬ 👥 ណែនាំមិត្ត = +5 វីដេអូ\n` +
+      `{:diamond:} ទិញ / VIP ដើម្បីបន្ត ឬ 👥 ណែនាំមិត្ត = +5 វីដេអូ\n` +
       `💡 YouTube · FB · IG · TikTok នៅតែ ឥតគិតថ្លៃ មិនកំណត់ ♾`,
-    doneWithLink: (name, url) => `✅ រួចរាល់៖ ${name}\n\n🔗 ${url}`,
-    doneNoLink: (name) => `✅ រួចរាល់៖ ${name}`,
-    failed: (reason) => `❌ ទាញយកមិនបាន៖ ${reason}`,
+    doneWithLink: (name, url) => `{:ok:} រួចរាល់៖ ${name}\n\n{:link:} ${url}`,
+    doneNoLink: (name) => `{:ok:} រួចរាល់៖ ${name}`,
+    failed: (reason) => `{:fail:} ទាញយកមិនបាន៖ ${reason}`,
     tooBig: (mb) => `ឯកសារនេះ ${mb}MB ធំជាងកំណត់ 50MB របស់ Telegram សម្រាប់ bot — ខ្ញុំផ្ញើជាតំណជំនួស។`,
     noMedia: "សាររបស់តំណនោះគ្មានវីដេអូ ឬសំឡេងទេ។",
-    privateVipOnly: "🔒 តំណ Telegram បិទជាបណ្ដោះអាសន្នដោយអ្នកគ្រប់គ្រង។",
-    privateNoAccess: "🔒 មិនអាចចូលមើល chat នោះបានទេ — គណនីរបស់យើងមិនមែនជាសមាជិកនៅក្នុងក្រុមនោះទេ។",
+    privateVipOnly: "{:lock:} តំណ Telegram បិទជាបណ្ដោះអាសន្នដោយអ្នកគ្រប់គ្រង។",
+    privateNoAccess: "{:lock:} មិនអាចចូលមើល chat នោះបានទេ — គណនីរបស់យើងមិនមែនជាសមាជិកនៅក្នុងក្រុមនោះទេ។",
     telegramOffline: "🔧 ផ្នែក Telegram កំពុងភ្ជាប់ឡើងវិញ — អ្នកគ្រប់គ្រងបានទទួលដំណឹងហើយ។ សូមសាកម្តងទៀតបន្តិចទៀត។\n\n💡 YouTube · FB · IG · TikTok នៅតែដំណើរការធម្មតា ♾",
-    telegramBusy: "⏳ server កំពុង update — សូមសាកម្តងទៀតក្នុង ១ នាទី។",
+    telegramBusy: "{:wait:} server កំពុង update — សូមសាកម្តងទៀតក្នុង ១ នាទី។",
     inviteLink: "នោះជាតំណអញ្ជើញ (t.me/+...) មិនមែនតំណទៅកាន់ post ទេ។ សូមចូលក្នុង post វីដេអូ → ចុចលើវា → Copy Link រួចផ្ញើតំណនោះមក។",
     sendingVideo: "📤 កំពុងផ្ញើវីដេអូ…",
   },
@@ -212,8 +214,8 @@ const TEXT = {
       `{:m_free:} SaveIt Free — free & unlimited ♾\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
       `{:m_pro:} SaveIt Pro — Telegram (private groups/channels)\n` +
-      `      🎁 10 videos free to try\n` +
-      `      🎬 Full-size video, no 50MB limit\n\n` +
+      `      {:gift:} 10 videos free to try\n` +
+      `      {:video:} Full-size video, no 50MB limit\n\n` +
       `Just send me a link and I'll do the rest.`,
     help:
       `{:m_help:} How to use\n\n` +
@@ -236,13 +238,13 @@ const TEXT = {
     historyEmpty: "Nothing downloaded yet. Send a link to start.",
     referralTitle: "Referral programme",
     referralBody: (count, bonus, link) =>
-      `🎁 Get ${bonus} extra downloads for every friend you bring!\n\n` +
+      `{:gift:} Get ${bonus} extra downloads for every friend you bring!\n\n` +
       `📊 You have referred: ${count}\n\n` +
-      `🔗 Your referral link:\n${link}\n\n` +
+      `{:link:} Your referral link:\n${link}\n\n` +
       `➡️ Share it — you're credited as soon as they start the bot.`,
     referralJoined: (name) => `🎉 ${name} joined through your referral link! Extra downloads added.`,
     languagePrompt: "🌐 Choose a language:",
-    languageSet: "✅ Switched to English.",
+    languageSet: "{:ok:} Switched to English.",
     openApp: (url) => `🖥 Open the full app:\n${url}`,
     openAppMissing: "🖥 The web app URL isn't configured yet.",
     sendLink: "📥 Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
@@ -251,27 +253,27 @@ const TEXT = {
       `{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
-      `🔗 .mp4 · .m3u8 · .mp3\n` +
+      `{:link:} .mp4 · .m3u8 · .mp3\n` +
       `➕ ~1800 more sites\n\n` +
       `♾ As many as you like — no charge, no limit\n\n` +
       `👉 Send a link now\n` +
       `💡 Want audio only? Write audio after the link`,
     proScreenTrial: (bar, used, total, left) =>
       `{:m_pro:} SaveIt Pro — Telegram\n\n` +
-      `🎁 Free trial: ${total} videos\n` +
+      `{:gift:} Free trial: ${total} videos\n` +
       `${bar}  ${used}/${total}\n` +
-      `✅ ${left} left\n\n` +
+      `{:ok:} ${left} left\n\n` +
       `Download from:\n` +
-      `🔒 Private groups / channels (t.me/c/...)\n` +
+      `{:lock:} Private groups / channels (t.me/c/...)\n` +
       `📢 Public channels (t.me/...)\n` +
-      `🎬 Full-size video — no 50MB limit\n` +
+      `{:video:} Full-size video — no 50MB limit\n` +
       `⚡ Delivered instantly\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenVip: (until) =>
       `{:m_pro:} SaveIt Pro — VIP\n\n` +
       `♾ Unlimited until ${until}\n\n` +
-      `🔒 Private groups / channels (t.me/c/...)\n` +
-      `🎬 Full-size video — no 50MB limit\n` +
+      `{:lock:} Private groups / channels (t.me/c/...)\n` +
+      `{:video:} Full-size video — no 50MB limit\n` +
       `⚡ Delivered instantly\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenEmpty: (bar, total) =>
@@ -279,28 +281,28 @@ const TEXT = {
       `${bar}  ${total}/${total}\n` +
       `⛔ Your free videos are used up\n\n` +
       `To keep going:\n` +
-      `💎 Buy a video pack, or VIP unlimited\n` +
+      `{:diamond:} Buy a video pack, or VIP unlimited\n` +
       `👥 Refer a friend = +5 free videos\n\n` +
       `💡 YouTube · FB · IG · TikTok stay free and unlimited ♾`,
     proOwnAccount:
       `\n\n➕ Want your own private groups? Link your Telegram account\n` +
       `      in 🚀 Open App → Settings → Telegram (optional)`,
     notALink: "That isn't a link. Send something starting with http:// or https://.",
-    working: "⏳ Working on it… I'll send it back when it's ready.",
-    queued: "✅ Queued. I'll send it back once it's downloaded (a long video can take a few minutes).",
+    working: "{:wait:} Working on it… I'll send it back when it's ready.",
+    queued: "{:ok:} Queued. I'll send it back once it's downloaded (a long video can take a few minutes).",
     quotaOver: (total) =>
       `⛔ You've used all ${total} free Telegram videos.\n\n` +
-      `💎 Buy / VIP to keep going, or 👥 refer a friend = +5 videos\n` +
+      `{:diamond:} Buy / VIP to keep going, or 👥 refer a friend = +5 videos\n` +
       `💡 YouTube · FB · IG · TikTok stay free and unlimited ♾`,
-    doneWithLink: (name, url) => `✅ Done: ${name}\n\n🔗 ${url}`,
-    doneNoLink: (name) => `✅ Done: ${name}`,
-    failed: (reason) => `❌ Download failed: ${reason}`,
+    doneWithLink: (name, url) => `{:ok:} Done: ${name}\n\n{:link:} ${url}`,
+    doneNoLink: (name) => `{:ok:} Done: ${name}`,
+    failed: (reason) => `{:fail:} Download failed: ${reason}`,
     tooBig: (mb) => `That file is ${mb}MB, over Telegram's 50MB bot upload limit — here's a link instead.`,
     noMedia: "That message has no video or audio in it.",
-    privateVipOnly: "🔒 Telegram links are switched off by the operator for now.",
-    privateNoAccess: "🔒 Can't open that chat — our account isn't a member of that group.",
+    privateVipOnly: "{:lock:} Telegram links are switched off by the operator for now.",
+    privateNoAccess: "{:lock:} Can't open that chat — our account isn't a member of that group.",
     telegramOffline: "🔧 The Telegram side is reconnecting — the operator has been told. Please try again shortly.\n\n💡 YouTube · FB · IG · TikTok still work as normal ♾",
-    telegramBusy: "⏳ The server is updating — please try again in a minute.",
+    telegramBusy: "{:wait:} The server is updating — please try again in a minute.",
     inviteLink: "That's an invite link (t.me/+...), not a link to a post. Open the video post → tap it → Copy Link, and send that.",
     sendingVideo: "📤 Sending the video…",
   },

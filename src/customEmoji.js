@@ -61,9 +61,27 @@ export const EMOJI = {
   inv_summary: ["inv_summary", "📋"],
   inv_shop: ["inv_shop", "🏪"],
   inv_back: ["inv_back", "⬅️"],
+  // replies & extras
+  diamond: ["diamond", "💎"],
+  sparkle: ["sparkle", "✨"],
+  video: ["video", "🎬"],
+  ok: ["ok", "✅"],
+  fail: ["fail", "❌"],
+  wait: ["wait", "⏳"],
+  dl: ["dl", "⬇️"],
+  fire: ["fire", "🔥"],
+  star: ["star", "⭐"],
+  rocket: ["rocket", "🚀"],
+  gift: ["gift", "🎁"],
+  music: ["music", "🎵"],
+  heart: ["heart", "❤️"],
+  link: ["link", "🔗"],
+  lock: ["lock", "🔒"],
 };
 
-const TOKEN = /\{:([a-z_]+):\}/g;
+// {:name:} is one of EMOJI; {:1234...:} is any custom emoji by its id (one a
+// user just made, say), shown as ✨ where custom emoji can't be.
+const TOKEN = /\{:([a-z_]+|\d{5,}):\}/g;
 
 // Once Telegram refuses them (owner without Premium, or ids of a pack that
 // was deleted), stop trying for a while instead of paying a failed request on
@@ -71,8 +89,10 @@ const TOKEN = /\{:([a-z_]+):\}/g;
 const RETRY_MS = 10 * 60_000;
 let refusedAt = 0;
 
+const NONE = Object.freeze({});
+
 async function emojiIds() {
-  if (refusedAt && Date.now() - refusedAt < RETRY_MS) return {};
+  if (refusedAt && Date.now() - refusedAt < RETRY_MS) return NONE;
   return (await paymentSettings()).emoji ?? {};
 }
 
@@ -83,11 +103,12 @@ function resolve(text, ids, existing = []) {
   let out = "";
   let last = 0;
   for (const m of text.matchAll(TOKEN)) {
-    const entry = EMOJI[m[1]];
+    const byId = /^\d+$/.test(m[1]);
+    const entry = byId ? [null, "✨"] : EMOJI[m[1]];
     if (!entry) continue;
     out += text.slice(last, m.index);
     const fallback = entry[1];
-    const id = ids[m[1]];
+    const id = byId ? (ids === NONE ? null : m[1]) : ids[m[1]];
     // Offsets are UTF-16 code units -- exactly what JS string lengths count.
     if (id) entities.push({ type: "custom_emoji", offset: out.length, length: fallback.length, custom_emoji_id: id });
     out += fallback;
@@ -104,7 +125,7 @@ function decorateButtons(markup, ids) {
     row.map((button) => {
       if (!button || typeof button !== "object") return button;
       const { emoji, ...rest } = button;
-      if (typeof rest.text === "string") rest.text = resolve(rest.text, {}).text;
+      if (typeof rest.text === "string") rest.text = resolve(rest.text, NONE).text;
       if (emoji && ids[emoji]) {
         rest.icon_custom_emoji_id = ids[emoji];
         // The logo takes the place of the label's own leading emoji.
@@ -122,7 +143,7 @@ function decorateButtons(markup, ids) {
 /** The payload with tokens and button emoji resolved (plain ones when `plain`). */
 export async function decorate(body, { plain = false } = {}) {
   if (!body || typeof body !== "object") return body;
-  const ids = plain ? {} : await emojiIds();
+  const ids = plain ? NONE : await emojiIds();
   const next = { ...body };
   if (typeof next.text === "string") {
     const r = resolve(next.text, ids, next.entities ?? []);
@@ -165,7 +186,19 @@ async function botApi(method, body) {
   return res.json().catch(() => ({}));
 }
 
-/** The multipart request that creates `name` from the icons (stills only when `still`). */
+const FIRST_BATCH = 50; // createNewStickerSet takes at most 50; the rest are added one by one
+
+/** One icon as a multipart field plus its InputSticker (still only when `still`). */
+async function inputSticker(form, field, token, still) {
+  const [file, fallback] = EMOJI[token];
+  // A moving version (.webm, VP9) wins over the still one when there is one.
+  const video = still ? null : await fs.readFile(path.join(DIR, `${file}.webm`)).catch(() => null);
+  const bytes = video ?? (await fs.readFile(path.join(DIR, `${file}.png`)));
+  form.set(field, new Blob([bytes], { type: video ? "video/webm" : "image/png" }), `${file}.${video ? "webm" : "png"}`);
+  return { sticker: `attach://${field}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] };
+}
+
+/** The request that creates `name` from the first icons. */
 async function packForm(ownerId, name, tokens, still) {
   const form = new FormData();
   form.set("user_id", String(ownerId));
@@ -173,17 +206,27 @@ async function packForm(ownerId, name, tokens, still) {
   form.set("title", "SaveIt KH Icons");
   form.set("sticker_type", "custom_emoji");
   const stickers = [];
-  for (const [i, token] of tokens.entries()) {
-    const [file, fallback] = EMOJI[token];
-    // A moving version (.webm, VP9) wins over the still one when there is one.
-    const video = still ? null : await fs.readFile(path.join(DIR, `${file}.webm`)).catch(() => null);
-    const bytes = video ?? (await fs.readFile(path.join(DIR, `${file}.png`)));
-    const ext = video ? "webm" : "png";
-    form.set(`s${i}`, new Blob([bytes], { type: video ? "video/webm" : "image/png" }), `${file}.${ext}`);
-    stickers.push({ sticker: `attach://s${i}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] });
-  }
+  for (const [i, token] of tokens.slice(0, FIRST_BATCH).entries()) stickers.push(await inputSticker(form, `s${i}`, token, still));
   form.set("stickers", JSON.stringify(stickers));
   return form;
+}
+
+/** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. */
+async function addRest(ownerId, name, tokens, still) {
+  const added = [];
+  for (const token of tokens.slice(FIRST_BATCH)) {
+    for (const asStill of still ? [true] : [false, true]) {
+      const form = new FormData();
+      form.set("user_id", String(ownerId));
+      form.set("name", name);
+      form.set("sticker", JSON.stringify(await inputSticker(form, "s", token, asStill)));
+      if ((await botApiForm("addStickerToSet", form)).ok) {
+        added.push(token);
+        break;
+      }
+    }
+  }
+  return added;
 }
 
 /**
@@ -211,10 +254,13 @@ export async function buildPack(ownerId) {
     note = `\n(Moving icons were refused -- "${why}" -- so this pack is still images.)`;
   }
 
+  const added = [...tokens.slice(0, FIRST_BATCH), ...(await addRest(ownerId, name, tokens, !!note))];
+
+  // The set lists its stickers in the order they went in.
   const set = await botApi("getStickerSet", { name });
   const list = set?.result?.stickers ?? [];
   const ids = {};
-  tokens.forEach((token, i) => {
+  added.forEach((token, i) => {
     if (list[i]?.custom_emoji_id) ids[token] = list[i].custom_emoji_id;
   });
   const previous = (await paymentSettings()).emoji_set;
@@ -228,9 +274,10 @@ export async function buildPack(ownerId) {
     if (old && old !== name) await botApi("deleteStickerSet", { name: old }).catch(() => null);
   }
   return (
-    `✅ Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
+    `{:ok:} Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
     `https://t.me/addemoji/${name}\n\n` +
     `Test: {:logo:} {:brand:} {:admin:} · {:m_free:} {:m_pro:} {:m_buy:} {:m_account:} {:m_help:} · {:inv_in:} {:inv_out:} {:inv_create:}\n` +
+    `{:diamond:} {:sparkle:} {:video:} {:ok:} {:fail:} {:wait:} {:dl:} {:fire:} {:star:} {:rocket:} {:gift:} {:music:} {:heart:} {:link:} {:lock:}\n` +
     `{:yt:} {:fb:} {:ig:} {:tt:} {:x:} · {:aba:} {:wing:} {:truemoney:} {:bakong:} {:khqr:}\n\n` +
     `If these show as normal emoji, the bot's owner account (the one that created it in @BotFather) needs Telegram Premium.`
   );

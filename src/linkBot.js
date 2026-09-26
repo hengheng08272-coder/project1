@@ -20,6 +20,7 @@ import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } fr
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
+import * as emojiMaker from "./emojiMaker.js";
 import * as khInvoice from "./khInvoice.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
@@ -237,6 +238,11 @@ export async function handleMessage(message) {
   const user = await ensureUser(from, startPayload);
   const t = texts(user.language);
 
+  // A GIF / video / photo / link for the Emoji Maker (while it waits for
+  // one, or captioned /emoji). Before the photo handling: a photo it waits
+  // for is an emoji, not a payment screenshot.
+  if (text !== "/emoji" && !/^\/start\b/.test(text) && !actionForLabel(text) && (await emojiMaker.handleMessage(message, user))) return;
+
   // A photo is a payment screenshot, or -- from the operator, captioned
   // /setqr -- the bank QR orders are built from. Checked before the text
   // handling below, since a photo usually has no text at all.
@@ -263,8 +269,13 @@ export async function handleMessage(message) {
   if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language))) return;
 
   const action = actionForLabel(text) ?? commandAction(text);
-  if (action) khInvoice.cancelPending(chatId);
+  if (action) {
+    khInvoice.cancelPending(chatId);
+    if (action !== "emoji") emojiMaker.cancel(chatId);
+  }
   switch (action) {
+    case "emoji":
+      return emojiMaker.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "account":
@@ -383,6 +394,7 @@ function commandAction(text) {
     case "/free": return "free";
     case "/premium": return "premium";
     case "/invoice": return "invoice";
+    case "/emoji": return "emoji";
     default: return null;
   }
 }

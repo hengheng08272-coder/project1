@@ -432,13 +432,23 @@ tile("inv_back", ["#CBD5E1", "#475569"], (g) => {
 });
 
 // ------------------------------------------------------------ platforms
-tile("facebook", ["#3B8BFF", "#0B5CD5"], (g) => {
+/** A soft heartbeat about the tile's centre (two quick pulses per loop). */
+function beat(g, t, amount = 0.07) {
+  const p = Math.max(0, Math.sin(TAU * t * 2)) ** 3;
+  const k = 1 + amount * p;
+  g.translate(50, 50);
+  g.scale(k, k);
+  g.translate(-50, -50);
+}
+tile("facebook", ["#3B8BFF", "#0B5CD5"], (g, t) => {
+  beat(g, t);
   g.font = "800 94px Inter";
   g.textAlign = "center";
   g.fillText("f", 58, 106);
-});
+}, { animate: true });
 
-tile("youtube", ["#FF4B4B", "#CC0000"], (g) => {
+tile("youtube", ["#FF4B4B", "#CC0000"], (g, t) => {
+  beat(g, t);
   g.beginPath();
   g.roundRect(15, 27, 70, 46, 14);
   g.fill();
@@ -450,9 +460,10 @@ tile("youtube", ["#FF4B4B", "#CC0000"], (g) => {
   g.lineTo(43, 62);
   g.closePath();
   g.fill();
-});
+}, { animate: true });
 
-tile("instagram", ["#F58529", "#8134AF"], (g) => {
+tile("instagram", ["#F58529", "#8134AF"], (g, t) => {
+  beat(g, t);
   g.lineWidth = 7;
   g.beginPath();
   g.roundRect(22, 22, 56, 56, 17);
@@ -463,9 +474,10 @@ tile("instagram", ["#F58529", "#8134AF"], (g) => {
   g.beginPath();
   g.arc(66.5, 33.5, 4.5, 0, Math.PI * 2);
   g.fill();
-});
+}, { animate: true });
 
-tile("twitter", ["#3A3A3A", "#000000"], (g) => {
+tile("twitter", ["#3A3A3A", "#000000"], (g, t) => {
+  beat(g, t);
   g.beginPath();
   g.moveTo(25, 23);
   g.lineTo(40, 23);
@@ -480,9 +492,10 @@ tile("twitter", ["#3A3A3A", "#000000"], (g) => {
   g.lineTo(25, 77);
   g.closePath();
   g.fill();
-}, { dark: true });
+}, { dark: true, animate: true });
 
-tile("tiktok", ["#2A2A2A", "#000000"], (g) => {
+tile("tiktok", ["#2A2A2A", "#000000"], (g, t) => {
+  beat(g, t);
   g.shadowColor = "transparent";
   const note = (dx, dy, colour) => {
     g.fillStyle = colour;
@@ -503,7 +516,7 @@ tile("tiktok", ["#2A2A2A", "#000000"], (g) => {
   note(-2.5, -2, "#25F4EE");
   note(2.5, 2, "#FE2C55");
   note(0, 0, "#FFFFFF");
-}, { dark: true });
+}, { dark: true, animate: true });
 
 // ------------------------------------------------------------ illustrations
 // Flat, outlined drawings (the style the operator picked) on a white tile.
@@ -915,6 +928,300 @@ tile("admin", ["#FCD34D", "#B45309"], (g) => {
   g.textAlign = "center";
   g.fillText("ADMIN", 50, 70);
 }, { animate: true, sparkles: true });
+
+// ------------------------------------------------------------ status & extras
+// Moving icons for the bot's replies: diamond, sparkle, video, done, failed,
+// waiting, download, fire, star, rocket, gift, music, heart, link, lock.
+const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, x)));
+
+// A cut diamond that turns, light running over its facets.
+tile("diamond", ["#6D5BFF", "#1E1466"], (g, t) => {
+  const bob = Math.sin(TAU * t) * 3;
+  const turn = Math.sin(TAU * t); // -1..1: which side faces us
+  g.translate(50, 52 + bob);
+  const facet = (pts, colour) => {
+    g.fillStyle = colour;
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.closePath();
+    g.fill();
+  };
+  const w = 36;
+  const mid = turn * 10; // the centre line of the crown moves as it turns
+  const top = -22, girdle = -8, tip = 32;
+  const light = (k) => `hsl(${190 + 20 * k}, 100%, ${62 + 22 * k}%)`;
+  facet([[-w, girdle], [-w + 12, top], [mid, top], [mid - 6, girdle]], light(0.9 - 0.4 * turn));
+  facet([[mid - 6, girdle], [mid, top], [w - 12, top], [w, girdle]], light(0.5 + 0.4 * turn));
+  facet([[-w, girdle], [mid - 6, girdle], [0, tip]], "hsl(205, 95%, 55%)");
+  g.shadowColor = "transparent";
+  facet([[mid - 6, girdle], [w, girdle], [0, tip]], "hsl(215, 90%, 42%)");
+  facet([[-w + 12, top], [mid, top], [mid - 6, girdle], [-w, girdle]], "rgba(255,255,255,0.18)");
+  g.strokeStyle = "rgba(255,255,255,0.85)";
+  g.lineWidth = 1.6;
+  g.beginPath();
+  g.moveTo(-w, girdle); g.lineTo(-w + 12, top); g.lineTo(w - 12, top); g.lineTo(w, girdle); g.lineTo(0, tip); g.closePath();
+  g.moveTo(-w, girdle); g.lineTo(w, girdle);
+  g.moveTo(mid, top); g.lineTo(mid - 6, girdle); g.lineTo(0, tip);
+  g.stroke();
+}, { animate: true, sparkles: true });
+
+// A big four-point sparkle that turns and breathes, with two small ones.
+tile("sparkle", ["#F472B6", "#7E22CE"], (g, t) => {
+  g.shadowColor = "rgba(255,255,255,0.8)";
+  g.shadowBlur = 8;
+  g.save();
+  g.translate(46, 54);
+  g.rotate(TAU * t * 0.25);
+  sparkle(g, 0, 0, 27 * (0.85 + 0.15 * Math.sin(TAU * t * 2)));
+  g.restore();
+  sparkle(g, 78, 26, 9 * twinkle(t, 0.3));
+  sparkle(g, 24, 22, 6 * twinkle(t, 0.7));
+}, { animate: true, sweep: false });
+
+// A film screen whose play button pulses.
+tile("video", ["#FB923C", "#C2410C"], (g, t) => {
+  g.beginPath();
+  g.roundRect(14, 24, 72, 52, 12);
+  g.fill();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#C2410C";
+  for (let i = 0; i < 5; i++) {
+    g.fillRect(20 + i * 14, 28, 7, 5);
+    g.fillRect(20 + i * 14, 67, 7, 5);
+  }
+  const k = 1 + 0.12 * Math.max(0, Math.sin(TAU * t * 2));
+  g.translate(51, 50);
+  g.scale(k, k);
+  g.fillStyle = "#EA580C";
+  g.beginPath();
+  g.moveTo(-8, -11);
+  g.lineTo(12, 0);
+  g.lineTo(-8, 11);
+  g.closePath();
+  g.fill();
+}, { animate: true });
+
+// A tick that draws itself, then holds.
+tile("ok", ["#4ADE80", "#15803D"], (g, t) => {
+  const p = ease(t / 0.45);
+  g.lineWidth = 12;
+  const pts = [[27, 52], [43, 68], [74, 34]];
+  const l1 = Math.hypot(16, 16), l2 = Math.hypot(31, 34);
+  let left = p * (l1 + l2);
+  g.beginPath();
+  g.moveTo(...pts[0]);
+  const a = Math.min(1, left / l1);
+  g.lineTo(27 + 16 * a, 52 + 16 * a);
+  left -= l1;
+  if (left > 0) {
+    const b = Math.min(1, left / l2);
+    g.lineTo(43 + 31 * b, 68 - 34 * b);
+  }
+  g.stroke();
+}, { animate: true, still: 0.9 });
+
+// A cross that shakes.
+tile("fail", ["#F87171", "#B91C1C"], (g, t) => {
+  const shake = Math.sin(TAU * t * 6) * 4 * Math.max(0, 1 - t * 2.5);
+  g.translate(shake, 0);
+  g.lineWidth = 12;
+  g.beginPath();
+  g.moveTo(31, 31); g.lineTo(69, 69);
+  g.moveTo(69, 31); g.lineTo(31, 69);
+  g.stroke();
+}, { animate: true, sweep: false });
+
+// An hourglass: sand runs down, then it turns over.
+tile("wait", ["#FCD34D", "#C27A12"], (g, t) => {
+  const flip = ease((t - 0.8) / 0.2);
+  g.translate(50, 50);
+  g.rotate(Math.PI * flip);
+  g.lineWidth = 5;
+  g.beginPath();
+  g.moveTo(-20, -30); g.lineTo(20, -30);
+  g.moveTo(-20, 30); g.lineTo(20, 30);
+  g.stroke();
+  g.lineWidth = 4;
+  g.beginPath();
+  g.moveTo(-16, -30); g.quadraticCurveTo(-16, -8, 0, 0); g.quadraticCurveTo(-16, 8, -16, 30);
+  g.moveTo(16, -30); g.quadraticCurveTo(16, -8, 0, 0); g.quadraticCurveTo(16, 8, 16, 30);
+  g.stroke();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#FFF7D6";
+  const run = Math.min(1, t / 0.8);
+  const topH = 22 * (1 - run);
+  g.beginPath(); // sand above, sinking
+  g.moveTo(-12 * (topH / 22), -4 - topH); g.lineTo(12 * (topH / 22), -4 - topH); g.lineTo(0, -2); g.closePath();
+  g.fill();
+  const botH = 22 * run;
+  g.beginPath(); // the pile below
+  g.moveTo(-14, 28); g.lineTo(14, 28); g.lineTo(0, 28 - botH); g.closePath();
+  g.fill();
+  if (run < 1) g.fillRect(-1, -2, 2, 30 - botH);
+}, { animate: true, sweep: false, still: 0.45 });
+
+// An arrow that drops into a tray.
+tile("dl", ["#60A5FA", "#1D4ED8"], (g, t) => {
+  const y = -14 + 16 * ease((t % 0.5) / 0.5);
+  g.lineWidth = 10;
+  g.beginPath();
+  g.moveTo(50, 20 + y); g.lineTo(50, 54 + y);
+  g.moveTo(35, 40 + y); g.lineTo(50, 55 + y); g.lineTo(65, 40 + y);
+  g.stroke();
+  g.lineWidth = 8;
+  g.beginPath();
+  g.moveTo(24, 62); g.lineTo(24, 76); g.lineTo(76, 76); g.lineTo(76, 62);
+  g.stroke();
+}, { animate: true });
+
+// A flame that flickers.
+tile("fire", ["#FDBA74", "#DC2626"], (g, t) => {
+  const f = (k) => Math.sin(TAU * (t * 3 + k));
+  const flame = (s, colour, sway) => {
+    g.fillStyle = colour;
+    g.beginPath();
+    g.moveTo(50, 86);
+    g.bezierCurveTo(50 - 28 * s, 86, 50 - 30 * s, 58, 50 - 14 * s, 44);
+    g.bezierCurveTo(50 - 12 * s, 56, 50 - 4 * s, 58, 50 - 4 * s, 58);
+    g.bezierCurveTo(50 - 10 * s + sway, 36, 50 + sway, 22, 50 + 6 * s + sway, 12 + 4 * (1 - s));
+    g.bezierCurveTo(50 + 12 * s, 34, 50 + 30 * s, 48, 50 + 28 * s, 64);
+    g.bezierCurveTo(50 + 28 * s, 78, 50 + 18 * s, 86, 50, 86);
+    g.fill();
+  };
+  flame(1 + 0.04 * f(0), "#FFFFFF", 3 * f(0.2));
+  g.shadowColor = "transparent";
+  flame(0.62 + 0.05 * f(0.5), "#FDE047", 3 * f(0.7));
+  flame(0.3 + 0.04 * f(0.3), "#FB923C", 2 * f(0.1));
+}, { animate: true, sweep: false });
+
+// A star that turns and glints.
+tile("star", ["#FDE68A", "#D97706"], (g, t) => {
+  g.translate(50, 52);
+  g.rotate(Math.sin(TAU * t) * 0.3);
+  const k = 1 + 0.06 * Math.sin(TAU * t * 2);
+  g.scale(k, k);
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 14 : 34;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  g.closePath();
+  g.lineJoin = "round";
+  g.lineWidth = 5;
+  g.fill();
+  g.stroke();
+}, { animate: true, sparkles: true });
+
+// A rocket lifting off, flame trembling.
+tile("rocket", ["#818CF8", "#3730A3"], (g, t) => {
+  const lift = Math.sin(TAU * t) * 4;
+  g.translate(50, 50 + lift);
+  g.rotate(Math.PI / 4);
+  g.shadowColor = "transparent";
+  const flick = 0.8 + 0.2 * Math.sin(TAU * t * 6);
+  g.fillStyle = "#FDBA74";
+  g.beginPath(); g.moveTo(-7, 22); g.lineTo(0, 22 + 18 * flick); g.lineTo(7, 22); g.closePath(); g.fill();
+  g.fillStyle = "#FDE047";
+  g.beginPath(); g.moveTo(-4, 22); g.lineTo(0, 22 + 10 * flick); g.lineTo(4, 22); g.closePath(); g.fill();
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.moveTo(0, -34);
+  g.bezierCurveTo(16, -22, 14, 8, 11, 22);
+  g.lineTo(-11, 22);
+  g.bezierCurveTo(-14, 8, -16, -22, 0, -34);
+  g.fill();
+  g.fillStyle = "#F43F5E";
+  g.beginPath(); g.moveTo(-11, 6); g.lineTo(-22, 24); g.lineTo(-10, 20); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(11, 6); g.lineTo(22, 24); g.lineTo(10, 20); g.closePath(); g.fill();
+  g.fillStyle = "#38BDF8";
+  g.beginPath(); g.arc(0, -8, 6.5, 0, TAU); g.fill();
+  g.strokeStyle = "#3730A3"; g.lineWidth = 2; g.stroke();
+}, { animate: true, sparkles: true, sweep: false });
+
+// A gift whose lid hops.
+tile("gift", ["#F9A8D4", "#BE185D"], (g, t) => {
+  const hop = Math.max(0, Math.sin(TAU * t * 2)) * 7;
+  g.beginPath();
+  g.roundRect(22, 48, 56, 36, 5);
+  g.fill();
+  g.save();
+  g.translate(0, -hop);
+  g.beginPath();
+  g.roundRect(17, 34, 66, 15, 5);
+  g.fill();
+  g.lineWidth = 5;
+  g.beginPath();
+  g.moveTo(50, 34); g.bezierCurveTo(40, 16, 26, 26, 38, 33);
+  g.moveTo(50, 34); g.bezierCurveTo(60, 16, 74, 26, 62, 33);
+  g.stroke();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#EC4899";
+  g.fillRect(45, 34, 10, 15);
+  g.restore();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#EC4899";
+  g.fillRect(45, 48, 10, 36);
+}, { animate: true, sparkles: true });
+
+// Two notes bouncing in turn.
+tile("music", ["#C084FC", "#7E22CE"], (g, t) => {
+  const a = Math.max(0, Math.sin(TAU * t * 2)) * -5;
+  const b = Math.max(0, Math.sin(TAU * t * 2 + Math.PI)) * -5;
+  g.lineWidth = 6;
+  g.beginPath();
+  g.moveTo(40, 64 + a); g.lineTo(40, 26 + a);
+  g.moveTo(72, 58 + b); g.lineTo(72, 20 + b);
+  g.stroke();
+  g.lineWidth = 9;
+  g.beginPath();
+  g.moveTo(40, 30 + a); g.lineTo(72, 24 + b);
+  g.stroke();
+  g.beginPath(); g.ellipse(31, 66 + a, 11, 8.5, -0.4, 0, TAU); g.fill();
+  g.beginPath(); g.ellipse(63, 60 + b, 11, 8.5, -0.4, 0, TAU); g.fill();
+}, { animate: true });
+
+// A heart that beats.
+tile("heart", ["#FB7185", "#BE123C"], (g, t) => {
+  beat(g, t, 0.14);
+  g.beginPath();
+  g.moveTo(50, 82);
+  g.bezierCurveTo(12, 58, 14, 24, 36, 24);
+  g.bezierCurveTo(44, 24, 50, 32, 50, 36);
+  g.bezierCurveTo(50, 32, 56, 24, 64, 24);
+  g.bezierCurveTo(86, 24, 88, 58, 50, 82);
+  g.fill();
+}, { animate: true, sparkles: true });
+
+// Two chain links that close.
+tile("link", ["#94A3B8", "#334155"], (g, t) => {
+  const gap = 6 * (1 - ease(t / 0.4)) * (t < 0.9 ? 1 : 0);
+  g.lineWidth = 9;
+  g.save();
+  g.translate(50, 50);
+  g.rotate(-Math.PI / 4);
+  g.beginPath(); g.roundRect(-34 - gap, -11, 38, 22, 11); g.stroke();
+  g.beginPath(); g.roundRect(-4 + gap, -11, 38, 22, 11); g.stroke();
+  g.restore();
+}, { animate: true, still: 0.6 });
+
+// A padlock that clicks shut.
+tile("lock", ["#5EEAD4", "#0F766E"], (g, t) => {
+  const up = 8 * (1 - ease((t - 0.3) / 0.2));
+  g.lineWidth = 8;
+  g.beginPath();
+  g.moveTo(34, 48 - up); g.lineTo(34, 36 - up);
+  g.arc(50, 36 - up, 16, Math.PI, 0);
+  g.lineTo(66, 48 - up);
+  g.stroke();
+  g.beginPath();
+  g.roundRect(24, 46, 52, 38, 8);
+  g.fill();
+  g.shadowColor = "transparent";
+  g.fillStyle = "#0F766E";
+  g.beginPath(); g.arc(50, 61, 5, 0, TAU); g.fill();
+  g.fillRect(47.5, 61, 5, 12);
+}, { animate: true, still: 0.8 });
 
 // ------------------------------------------------------------ profile video
 // The logo full-bleed at 640x640 as an MP4 loop, for an animated profile
