@@ -306,26 +306,7 @@ function drawSaveIt(g, t) {
   g.roundRect(33, 76, 34, 5, 2.5);
   g.fill();
 }
-icon("logo", drawSaveIt, { glints: false, still: 0.5 });
 
-// KH Invoice: the operator's logo, square-cropped into a rounded tile.
-{
-  const img = await loadImage(fs.readFileSync(path.join(SRC, "kh-invoice-logo.jpg")));
-  icon("inv_app", (g, t) => {
-    g.beginPath();
-    g.roundRect(2, 2, 96, 96, 22);
-    g.clip();
-    const bg = g.createLinearGradient(0, 100, 100, 0);
-    bg.addColorStop(0, "#0F1249");
-    bg.addColorStop(1, "#097A78");
-    g.fillStyle = bg;
-    g.fillRect(0, 0, S, S);
-    const k = 1 + 0.03 * wave(t);
-    g.translate(50, 50);
-    g.scale(k, k);
-    g.drawImage(img, 70, 0, 431, 431, -48, -48, 96, 96);
-  }, { glints: false });
-}
 
 // The wordmark: "SaveIt" in blue over a gold "KH".
 icon("brand", (g) => {
@@ -1126,25 +1107,154 @@ icon("credit", (g, t) => {
   g.stroke();
 }, { still: 0.8 });
 
-// ------------------------------------------------------------ profile video
-// The SaveIt badge full-bleed at 640x640 as an MP4 loop and a PNG, for an
-// animated profile photo (Telegram Premium). Written to assets/profile.
-{
+// ------------------------------------------------------------ 360° logos
+/**
+ * A badge that turns a full 360° about its upright axis, fast, then rests:
+ * the face narrows to its edge and opens again, a coin-thick rim shows
+ * while it is side-on, and the face darkens a little as it turns away.
+ */
+function spin360(face, { turn = 0.55, rim = "#0B1B3A", round = false } = {}) {
+  return (g, t) => {
+    const a = TAU * ease(t / turn); // one full turn, then still
+    const sx = Math.cos(a);
+    const side = Math.sin(a);
+    g.translate(50, 50);
+    // The rim: a few stacked copies, offset toward the side facing us.
+    const depth = 4 * Math.abs(side);
+    for (let i = depth; i > 0; i -= 1) {
+      g.save();
+      g.translate(-Math.sign(side) * i * 0.9, 0);
+      g.scale(Math.max(0.04, Math.abs(sx)), 1);
+      g.fillStyle = rim;
+      g.beginPath();
+      if (round) g.arc(0, 0, 47, 0, TAU);
+      else g.roundRect(-47, -47, 94, 94, 24);
+      g.fill();
+      g.restore();
+    }
+    g.save();
+    g.scale(Math.max(0.04, Math.abs(sx)), 1);
+    g.translate(-50, -50);
+    face(g, t, sx < 0);
+    // Turned away: a touch darker.
+    const dim = 0.3 * (1 - Math.abs(sx));
+    if (dim > 0.01) {
+      g.globalCompositeOperation = "source-atop";
+      g.fillStyle = `rgba(0,0,0,${dim})`;
+      g.fillRect(0, 0, S, S);
+    }
+    g.restore();
+  };
+}
+
+/** KH Invoice, drawn: a page with a gold dog-ear, green bars, a rising arrow. */
+function drawKhInvoice(g, t, back) {
+  g.save();
+  g.beginPath();
+  g.roundRect(3, 3, 94, 94, 24);
+  g.clip();
+  const bg = g.createLinearGradient(0, 100, 100, 0);
+  bg.addColorStop(0, "#101650");
+  bg.addColorStop(0.55, "#0E3D6A");
+  bg.addColorStop(1, "#0A8580");
+  g.fillStyle = bg;
+  g.fillRect(0, 0, S, S);
+  // Seen from behind the picture mirrors, as a real card would.
+  if (back) {
+    g.translate(100, 0);
+    g.scale(-1, 1);
+  }
+  // The page, with its corner folded.
+  g.lineJoin = "round";
+  line(g, 5.5, "#FFFFFF");
+  g.beginPath();
+  g.moveTo(58, 17);
+  g.lineTo(28, 17);
+  g.quadraticCurveTo(22, 17, 22, 23);
+  g.lineTo(22, 76);
+  g.quadraticCurveTo(22, 82, 28, 82);
+  g.lineTo(66, 82);
+  g.quadraticCurveTo(72, 82, 72, 76);
+  g.lineTo(72, 31);
+  g.stroke();
+  const ear = g.createLinearGradient(58, 17, 72, 31);
+  ear.addColorStop(0, "#FFE9A0");
+  ear.addColorStop(1, "#C98A12");
+  g.fillStyle = ear;
+  g.beginPath();
+  g.moveTo(58, 15);
+  g.quadraticCurveTo(70, 18, 74, 31);
+  g.lineTo(60, 31);
+  g.quadraticCurveTo(58, 31, 58, 29);
+  g.closePath();
+  g.fill();
+  // Bars.
+  const green = (y0) => {
+    const gr = g.createLinearGradient(0, y0, 0, 68);
+    gr.addColorStop(0, "#6EE7B7");
+    gr.addColorStop(1, "#047857");
+    return gr;
+  };
+  for (const [x, top] of [[31, 52], [41, 44], [51, 38]]) {
+    g.fillStyle = green(top);
+    g.beginPath();
+    g.roundRect(x, top, 7, 66 - top, 2);
+    g.fill();
+  }
+  // The arrow: white under green, climbing out of the page.
+  const pts = [[14, 84], [36, 62], [48, 72], [80, 34]];
+  line(g, 11, "#FFFFFF");
+  path2(g, pts);
+  g.stroke();
+  const ag = g.createLinearGradient(14, 84, 84, 26);
+  ag.addColorStop(0, "#047857");
+  ag.addColorStop(1, "#34D399");
+  line(g, 6, ag);
+  path2(g, pts);
+  g.stroke();
+  g.fillStyle = "#FFFFFF";
+  path2(g, [[88, 22], [70, 30], [84, 42]]);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#34D399";
+  path2(g, [[85, 26], [74, 31], [83, 38]]);
+  g.closePath();
+  g.fill();
+  g.restore();
+  // Rim light.
+  line(g, 1.6, "rgba(255,255,255,0.35)");
+  g.beginPath();
+  g.roundRect(4, 4, 92, 92, 23);
+  g.stroke();
+}
+
+/** SaveIt KH, as a face for the spin (its own badge, arrows falling). */
+function drawSaveItFace(g, t) {
+  drawSaveIt(g, Math.max(0, (t - 0.5) / 0.5)); // the drop plays once it rests
+}
+
+icon("inv_app", spin360(drawKhInvoice, { rim: "#07243F" }), { glints: true, still: 0.8 });
+icon("logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), { glints: true, still: 0.8 });
+
+// ------------------------------------------------------------ profile videos
+// Each logo full-bleed at 640x640, turning 360°, as an MP4 loop and a PNG,
+// for an animated profile photo (Telegram Premium). Written to assets/profile.
+function profileVideo(file, draw, background) {
   const dir = path.join(ROOT, "assets", "profile");
   fs.mkdirSync(dir, { recursive: true });
   const SIZE = 640;
   const big = (t) => {
     const c = createCanvas(SIZE, SIZE);
     const g = c.getContext("2d");
-    g.fillStyle = "#050B18";
+    g.fillStyle = background;
     g.fillRect(0, 0, SIZE, SIZE);
     g.scale(SIZE / 100, SIZE / 100);
     g.lineCap = "round";
     g.lineJoin = "round";
-    drawSaveIt(g, t);
+    draw(g, t);
     return c;
   };
-  fs.writeFileSync(path.join(dir, "saveit-logo.png"), big(0.5).toBuffer("image/png"));
+  fs.writeFileSync(path.join(dir, `${file}.png`), big(0.8).toBuffer("image/png"));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "profile-"));
   try {
     for (let i = 0; i < FRAMES; i++) {
@@ -1152,13 +1262,15 @@ icon("credit", (g, t) => {
     }
     execFileSync(FFMPEG, [
       "-y", "-loglevel", "error", "-framerate", String(FPS), "-i", path.join(tmp, "f%03d.png"),
-      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", "-an",
-      path.join(dir, "saveit-logo.mp4"),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-movflags", "+faststart", "-an",
+      path.join(dir, `${file}.mp4`),
     ]);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
+profileVideo("saveit-logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), "#050B18");
+profileVideo("kh-invoice-logo", spin360(drawKhInvoice, { rim: "#07243F" }), "#0B1640");
 
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {
