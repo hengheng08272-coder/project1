@@ -133,7 +133,7 @@ export async function activatePlan(order, user) {
 
 const L = {
   km: {
-    title: "🧾 KH Invoice",
+    title: "{:inv_app:} KH Invoice",
     tagline: "វិក្កយបត្រ · ចំណូលចំណាយ · ស្តុក · បំណុល — ក្នុង Telegram",
     notLinked:
       "🧾 KH Invoice — គ្រប់គ្រងហាងរបស់អ្នកពីទូរស័ព្ទ\n\n" +
@@ -149,18 +149,18 @@ const L = {
     income: "➕ ចំណូល",
     expense: "➖ ចំណាយ",
     unpaid: "🧾 មិនទាន់បង់",
-    refresh: "🔄",
+    refresh: "🔄 ថ្មី",
     buy: "👑 ទិញ Pro",
     trial: (bar, left, total) => `🎁 សាកល្បង: ${bar} នៅសល់ ${left}/${total} ថ្ងៃ`,
     trialOver: "⛔ ការសាកល្បងបានផុតកំណត់ — ចុច 👑 ទិញ Pro ដើម្បីបន្ត",
     pro: (until) => `👑 Pro សកម្ម រហូតដល់ ${until}`,
     today: "📅 ថ្ងៃនេះ",
     month: "🗓 ខែនេះ",
-    inc: "⬆️ ចំណូល",
-    exp: "⬇️ ចំណាយ",
+    inc: "{:inv_in:} ចំណូល",
+    exp: "{:inv_out:} ចំណាយ",
     bal: "💰 នៅសល់",
-    unpaidLine: (n, amount) => `🧾 វិក្កយបត្រមិនទាន់បង់: ${n}${n ? ` · ${amount}` : ""}`,
-    lowStock: (n) => `📦 ទំនិញជិតអស់: ${n}`,
+    unpaidLine: (n, amount) => `{:inv_unpaid:} វិក្កយបត្រមិនទាន់បង់: ${n}${n ? ` · ${amount}` : ""}`,
+    lowStock: (n) => `{:inv_stock:} ទំនិញជិតអស់: ${n}`,
     tip: "💡 ឆាប់ៗ: វាយ +25 លក់កាហ្វេ ឬ -10000៛ ថ្លៃទឹក ដើម្បីកត់ភ្លាមៗ",
     askAmount: (type) =>
       `${type === "income" ? "➕ ចំណូល" : "➖ ចំណាយ"} — វាយចំនួន និងពិពណ៌នា\n\nឧទាហរណ៍៖\n• 25 លក់កាហ្វេ\n• 15000៛ ថ្លៃដឹក\n• $3.5 ទឹកកក`,
@@ -205,7 +205,7 @@ const L = {
     noWebApp: "⚠️ កម្មវិធី KH Invoice មិនទាន់រៀបចំ link ទេ។",
   },
   en: {
-    title: "🧾 KH Invoice",
+    title: "{:inv_app:} KH Invoice",
     tagline: "Invoices · income & expenses · stock · debts — inside Telegram",
     notLinked:
       "🧾 KH Invoice — run your shop from your phone\n\n" +
@@ -221,18 +221,18 @@ const L = {
     income: "➕ Income",
     expense: "➖ Expense",
     unpaid: "🧾 Unpaid",
-    refresh: "🔄",
+    refresh: "🔄 Refresh",
     buy: "👑 Buy Pro",
     trial: (bar, left, total) => `🎁 Trial: ${bar} ${left}/${total} days left`,
     trialOver: "⛔ Your trial has ended — tap 👑 Buy Pro to continue",
     pro: (until) => `👑 Pro active until ${until}`,
     today: "📅 Today",
     month: "🗓 This month",
-    inc: "⬆️ Income",
-    exp: "⬇️ Expense",
+    inc: "{:inv_in:} Income",
+    exp: "{:inv_out:} Expense",
     bal: "💰 Balance",
-    unpaidLine: (n, amount) => `🧾 Unpaid invoices: ${n}${n ? ` · ${amount}` : ""}`,
-    lowStock: (n) => `📦 Low stock: ${n}`,
+    unpaidLine: (n, amount) => `{:inv_unpaid:} Unpaid invoices: ${n}${n ? ` · ${amount}` : ""}`,
+    lowStock: (n) => `{:inv_stock:} Low stock: ${n}`,
     tip: "💡 Shortcut: type +25 coffee sale or -10000៛ water to record instantly",
     askAmount: (type) =>
       `${type === "income" ? "➕ Income" : "➖ Expense"} — type the amount and a note\n\nFor example:\n• 25 coffee sales\n• 15000៛ delivery\n• $3.5 ice`,
@@ -320,9 +320,9 @@ function webAppUrl(screen) {
 // Inline, not reply-keyboard, web_app buttons: only a Mini App opened from an
 // inline button (or the menu button) is handed the signed initData the app
 // signs in with.
-function openButton(t, label, screen) {
+function openButton(t, label, screen, emoji = "inv_app") {
   const url = webAppUrl(screen);
-  return url ? { text: label ?? t.open, web_app: { url } } : null;
+  return url ? { text: label ?? t.open, emoji, web_app: { url } } : null;
 }
 
 /** The keyboard under the message box while in the KH Invoice section. */
@@ -330,11 +330,11 @@ export function sectionKeyboard(language) {
   const t = tx(language);
   return {
     keyboard: [
-      [{ text: t.kCreate }, { text: t.kOpen }],
-      [{ text: t.income }, { text: t.expense }],
-      [{ text: t.kSummary }, { text: t.unpaid }],
-      [{ text: t.kShop }, { text: t.buy }],
-      [{ text: t.kBack }],
+      [{ text: t.kCreate, emoji: "inv_create" }, { text: t.kOpen, emoji: "inv_app" }],
+      [{ text: t.income, emoji: "inv_in" }, { text: t.expense, emoji: "inv_out" }],
+      [{ text: t.kSummary, emoji: "inv_summary" }, { text: t.unpaid, emoji: "inv_unpaid" }],
+      [{ text: t.kShop, emoji: "inv_shop" }, { text: t.buy, emoji: "inv_pro" }],
+      [{ text: t.kBack, emoji: "inv_back" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -342,18 +342,19 @@ export function sectionKeyboard(language) {
 }
 
 // Section buttons arrive as plain text, in either language.
+// With a logo icon the button's own leading emoji is dropped (customEmoji.js),
+// so a tap may arrive either way.
 const SECTION_ACTIONS = new Map();
+const bare = (label) => label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
 for (const lang of Object.keys(L)) {
   const t = L[lang];
-  SECTION_ACTIONS.set(t.kCreate, "create");
-  SECTION_ACTIONS.set(t.kOpen, "open");
-  SECTION_ACTIONS.set(t.income, "income");
-  SECTION_ACTIONS.set(t.expense, "expense");
-  SECTION_ACTIONS.set(t.kSummary, "summary");
-  SECTION_ACTIONS.set(t.unpaid, "unpaid");
-  SECTION_ACTIONS.set(t.kShop, "shop");
-  SECTION_ACTIONS.set(t.buy, "buy");
-  SECTION_ACTIONS.set(t.kBack, "back");
+  for (const [label, action] of [
+    [t.kCreate, "create"], [t.kOpen, "open"], [t.income, "income"], [t.expense, "expense"],
+    [t.kSummary, "summary"], [t.unpaid, "unpaid"], [t.kShop, "shop"], [t.buy, "buy"], [t.kBack, "back"],
+  ]) {
+    SECTION_ACTIONS.set(label, action);
+    SECTION_ACTIONS.set(bare(label), action);
+  }
 }
 
 /** Entering the section: swap the keyboard, then show the numbers. */
@@ -366,11 +367,11 @@ export async function enterSection(chatId, user) {
 async function showScreens(chatId, user, createOnly) {
   const t = tx(user.language);
   const rows = createOnly
-    ? [[openButton(t, t.aCreate, "invoice")]]
+    ? [[openButton(t, t.aCreate, "invoice", "inv_create")]]
     : [
-        [openButton(t, t.aCreate, "invoice"), openButton(t, t.aInvoices, "invoices")],
-        [openButton(t, t.aReport, "report"), openButton(t, t.aStock, "stock")],
-        [openButton(t, t.aCustomer, "customer"), openButton(t, t.aDebt, "debt")],
+        [openButton(t, t.aCreate, "invoice", "inv_create"), openButton(t, t.aInvoices, "invoices", "inv_summary")],
+        [openButton(t, t.aReport, "report", "inv_report"), openButton(t, t.aStock, "stock", "inv_stock")],
+        [openButton(t, t.aCustomer, "customer", "inv_shop"), openButton(t, t.aDebt, "debt", "inv_unpaid")],
         [openButton(t, t.aHome)],
       ];
   if (!rows[0][0]) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
@@ -435,7 +436,7 @@ export async function showHome(chatId, user) {
     const keyboard = [];
     const start = openButton(t, t.start);
     if (start) keyboard.push([start]);
-    keyboard.push([{ text: t.buy, callback_data: "inv:plans" }]);
+    keyboard.push([{ text: t.buy, emoji: "inv_pro", callback_data: "inv:plans" }]);
     return call("sendMessage", { chat_id: chatId, text: t.notLinked, reply_markup: { inline_keyboard: keyboard } });
   }
 
@@ -465,21 +466,21 @@ export async function showHome(chatId, user) {
   ];
 
   const keyboard = [];
-  const create = openButton(t, t.aCreate, "invoice");
+  const create = openButton(t, t.aCreate, "invoice", "inv_create");
   const open = openButton(t);
   if (create && open) keyboard.push([create, open]);
   keyboard.push([
-    { text: t.income, callback_data: "inv:add:income" },
-    { text: t.expense, callback_data: "inv:add:expense" },
+    { text: t.income, emoji: "inv_in", callback_data: "inv:add:income" },
+    { text: t.expense, emoji: "inv_out", callback_data: "inv:add:expense" },
   ]);
-  const report = openButton(t, t.aReport, "report");
-  const stock = openButton(t, t.aStock, "stock");
+  const report = openButton(t, t.aReport, "report", "inv_report");
+  const stock = openButton(t, t.aStock, "stock", "inv_stock");
   if (report && stock) keyboard.push([report, stock]);
   keyboard.push([
-    { text: t.unpaid, callback_data: "inv:unpaid" },
-    { text: t.refresh, callback_data: "inv:home" },
+    { text: t.unpaid, emoji: "inv_unpaid", callback_data: "inv:unpaid" },
+    { text: t.refresh, emoji: "inv_refresh", callback_data: "inv:home" },
   ]);
-  if (!s.subscribed) keyboard.push([{ text: t.buy, callback_data: "inv:plans" }]);
+  if (!s.subscribed) keyboard.push([{ text: t.buy, emoji: "inv_pro", callback_data: "inv:plans" }]);
   return call("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } });
 }
 
@@ -540,9 +541,9 @@ async function recordEntry(chatId, user, type, text) {
     text: `${t.saved(type, amount, entry.description || "—")}\n\n${today}`,
     reply_markup: {
       inline_keyboard: [[
-        { text: t.income, callback_data: "inv:add:income" },
-        { text: t.expense, callback_data: "inv:add:expense" },
-        { text: t.title, callback_data: "inv:home" },
+        { text: t.income, emoji: "inv_in", callback_data: "inv:add:income" },
+        { text: t.expense, emoji: "inv_out", callback_data: "inv:add:expense" },
+        { text: t.title, emoji: "inv_app", callback_data: "inv:home" },
       ]],
     },
   });

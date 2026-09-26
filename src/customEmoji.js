@@ -34,9 +34,22 @@ export const EMOJI = {
   bakong: ["bakong", "🏦"],
   bankc: ["bank_c", "🏦"],
   khqr: ["khqr", "💳"],
+  // KH Invoice section
+  inv_app: ["inv_app", "📱"],
+  inv_create: ["inv_create", "🧾"],
+  inv_in: ["inv_in", "⬆️"],
+  inv_out: ["inv_out", "⬇️"],
+  inv_report: ["inv_report", "📊"],
+  inv_stock: ["inv_stock", "📦"],
+  inv_unpaid: ["inv_unpaid", "⏳"],
+  inv_refresh: ["inv_refresh", "🔄"],
+  inv_pro: ["inv_pro", "👑"],
+  inv_summary: ["inv_summary", "📋"],
+  inv_shop: ["inv_shop", "🏪"],
+  inv_back: ["inv_back", "⬅️"],
 };
 
-const TOKEN = /\{:([a-z]+):\}/g;
+const TOKEN = /\{:([a-z_]+):\}/g;
 
 // Once Telegram refuses them (owner without Premium), stop trying until the
 // pack is rebuilt, instead of paying a failed request on every message.
@@ -79,7 +92,10 @@ function decorateButtons(markup, ids) {
       if (emoji && ids[emoji]) {
         rest.icon_custom_emoji_id = ids[emoji];
         // The logo takes the place of the label's own leading emoji.
-        if (typeof rest.text === "string") rest.text = rest.text.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
+        if (typeof rest.text === "string") {
+          const bare = rest.text.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
+          if (bare) rest.text = bare; // an emoji-only label keeps its emoji
+        }
       }
       return rest;
     })
