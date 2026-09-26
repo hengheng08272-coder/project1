@@ -195,7 +195,8 @@ async function startOrder(chatId, user, packageId) {
 
   const title = packageTitle(pkg, user.language);
   const png = await renderKhqrCard(built.payload, {
-    title: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : "SaveIt Pro",
+    title: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice" : "SaveIt KH",
+    merchantName: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : "SaveIt Pro",
     subtitle: `${title} · $${amount.toFixed(2)}`,
     ticket,
   });

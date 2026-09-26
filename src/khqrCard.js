@@ -171,9 +171,15 @@ async function drawCentreMark(g, cx, cy, qrSize) {
  *   title    -- the band's left label, e.g. "SAVEIT PRO"
  *   subtitle -- what is being bought, e.g. "VIP 30 ថ្ងៃ"
  *   ticket   -- the order's ticket number, top right
+ *   merchantName -- the name printed on the card, e.g. the service being
+ *     paid for. Display only: the payload keeps the account's real name,
+ *     because ABA refuses a KHQR whose name was rewritten.
  * Drawn at 2x a 320-point layout: small in the chat, sharp when opened.
  */
-export async function renderKhqrCard(payload, { title = "SAVEIT KH", subtitle = "", ticket = "", scale = 2 } = {}) {
+export async function renderKhqrCard(
+  payload,
+  { title = "SAVEIT KH", subtitle = "", ticket = "", merchantName = "", scale = 2 } = {}
+) {
   registerFonts();
   const facts = payloadFacts(payload);
   // The ticket fonts have no emoji; package titles often start with one.
@@ -281,7 +287,7 @@ export async function renderKhqrCard(payload, { title = "SAVEIT KH", subtitle = 
   g.textAlign = "left";
   g.fillStyle = C.ink;
   g.font = "600 11px Inter, Battambang";
-  g.fillText(ellipsize(g, facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 8 + 11);
+  g.fillText(ellipsize(g, merchantName || facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 8 + 11);
   g.font = "800 19px Inter";
   const amountY = cardY + redH + 8 + 16 + 20;
   g.fillText(facts.value, cx + cardPad, amountY);
