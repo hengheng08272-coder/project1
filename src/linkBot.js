@@ -22,8 +22,9 @@ import * as botPay from "./botPay.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
+import * as r2 from "./r2.js";
 import { mediaInfo } from "./scanner.js";
-import { getClient, parseTelegramLink } from "./telegram.js";
+import { getClientForChat, parseTelegramLink } from "./telegram.js";
 
 // Telegram's own Bot API cap for a bot sending a file -- not configurable,
 // and well below what the userbot itself can fetch, so this only limits the
@@ -374,12 +375,25 @@ export async function handleCallback(cq) {
   return true;
 }
 
+function mayUsePrivateLinks(chatId, quota) {
+  const isOperator = Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
+  if (isOperator) return true;
+  if (config.botPrivateLinks === "all") return true;
+  if (config.botPrivateLinks === "admin") return false;
+  return quota.premium;
+}
+
 /**
  * The original flow: one Telegram post link in, its media back. Runs through
  * the shared userbot, since a bot cannot read a group it isn't in.
  */
 async function sendTelegramPost(chatId, user, url, quota) {
   const t = texts(user.language);
+
+  if (/t\.me\/(\+|joinchat\/)/i.test(url)) {
+    await send(chatId, t.inviteLink);
+    return;
+  }
 
   let parsed;
   try {
@@ -393,12 +407,26 @@ async function sendTelegramPost(chatId, user, url, quota) {
     return;
   }
 
+  // A numeric chat id is a t.me/c/... link: a private group or channel that
+  // only the operator's accounts can read. See config.botPrivateLinks.
+  if (typeof parsed.chatId === "number" && !mayUsePrivateLinks(chatId, quota)) {
+    await send(chatId, t.privateVipOnly);
+    return;
+  }
+
+  let client;
+  let entity;
+  try {
+    ({ client, entity } = await getClientForChat(parsed.chatId));
+  } catch {
+    await send(chatId, t.privateNoAccess);
+    return;
+  }
+
   await send(chatId, t.working);
 
   let localPath = null;
   try {
-    const client = await getClient();
-    const entity = await client.getEntity(parsed.chatId);
     const found = await withFloodRetry(() => client.getMessages(entity, { ids: parsed.messageId }), {
       label: `bot link fetch ${parsed.chatId}/${parsed.messageId}`,
     });
@@ -417,7 +445,13 @@ async function sendTelegramPost(chatId, user, url, quota) {
 
     const { size } = await fs.stat(localPath);
     if (size > BOT_UPLOAD_LIMIT_BYTES) {
-      await send(chatId, t.tooBig(Math.round(size / (1024 * 1024))));
+      // Over the Bot API's 50MB send limit -- which is every full episode --
+      // so it goes to R2 and comes back as a link instead of being refused.
+      const key = r2.buildUploadKey(`bot/${user.telegram_user_id}`, info.fileName);
+      const link = await r2.upload(localPath, key, info.mimeType);
+      const mb = Math.round(size / (1024 * 1024));
+      await send(chatId, `${t.tooBig(mb)}\n\n${t.doneWithLink(info.fileName, link)}`);
+      if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
       return;
     }
 

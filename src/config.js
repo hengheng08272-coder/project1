@@ -73,6 +73,12 @@ export const config = {
   // to the operator. Referring someone adds REFERRAL_BONUS more.
   botFreeDownloads: int("BOT_FREE_DOWNLOADS", 10),
   botReferralBonus: int("BOT_REFERRAL_BONUS", 5),
+  // Who may send the bot a link to a PRIVATE Telegram chat (t.me/c/...).
+  // The bot fetches those through the operator's own accounts, so without a
+  // limit anyone holding one link into a paid VIP group could take its
+  // videos for free. "vip" (default): bot VIP users and the operator only;
+  // "all": anyone; "admin": the operator only.
+  botPrivateLinks: str("BOT_PRIVATE_LINKS", "vip"),
   // Shared secret a phone-automation app (Tasker/MacroDroid/...) presents
   // when POSTing a raw ABA payment-notification text to /api/subscription/aba-ingest.
   // Unset means the endpoint refuses everything -- fail-closed on purpose.

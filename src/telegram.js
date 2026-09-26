@@ -256,6 +256,39 @@ const TME_HOST = /^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\//i;
  * deep link. The message id is not used everywhere yet, but callers that only
  * need the chat can keep calling {@link normalizeChatId}.
  */
+/**
+ * A client that can actually read `chatId`, and the chat itself.
+ *
+ * Different groups are joined by different accounts -- the VIP group is on
+ * the second one -- so the default account alone cannot see every chat. A
+ * chat we already track as a group uses that group's own account; anything
+ * else tries the default account, then each connected extra account, and
+ * the first one that can resolve the chat wins.
+ */
+export async function getClientForChat(chatId) {
+  const tried = [];
+  const [known] = rows(
+    await db().from("groups").select("account_id").eq("chat_id", String(chatId)).limit(1)
+  );
+  if (known) tried.push(known.account_id ?? null);
+  tried.push(null);
+  for (const account of await listAccounts()) {
+    if (account.connected) tried.push(account.id);
+  }
+
+  let lastErr = null;
+  for (const accountId of [...new Set(tried)]) {
+    try {
+      const client = await getClient({ accountId });
+      const entity = await client.getEntity(chatId);
+      return { client, entity, accountId };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error("No connected Telegram account can see that chat.");
+}
+
 export function parseTelegramLink(input) {
   const value = String(input ?? "").trim();
   if (!value) throw new Error("A chat ID is required.");
@@ -283,21 +316,26 @@ export function parseTelegramLink(input) {
       throw new Error('This is an invite link — use "Invite link" to join it first, not a chat ID.');
     }
 
-    // t.me/c/<internal id>[/<message id>] -- a private chat with no username.
-    const privateMatch = path.match(/^c\/(\d+)(?:\/(\d+))?/);
+    // t.me/c/<internal id>[/<topic id>]/<message id> -- a private chat with
+    // no username. A post inside a forum topic carries the topic id as an
+    // extra segment, and the message is always the LAST number: reading the
+    // first one instead fetched the topic's opening post, which has no video.
+    const privateMatch = path.match(/^c\/(\d+)((?:\/\d+)*)/);
     if (privateMatch) {
+      const numbers = privateMatch[2].split("/").filter(Boolean);
       return {
         chatId: Number(`-100${privateMatch[1]}`),
-        messageId: privateMatch[2] ? Number(privateMatch[2]) : null,
+        messageId: numbers.length ? Number(numbers[numbers.length - 1]) : null,
       };
     }
 
-    // t.me/<username>[/<message id>]
-    const publicMatch = path.match(/^([A-Za-z0-9_]+)(?:\/(\d+))?/);
+    // t.me/<username>[/<topic id>]/<message id>
+    const publicMatch = path.match(/^([A-Za-z0-9_]+)((?:\/\d+)*)/);
     if (publicMatch) {
+      const numbers = publicMatch[2].split("/").filter(Boolean);
       return {
         chatId: `@${publicMatch[1]}`,
-        messageId: publicMatch[2] ? Number(publicMatch[2]) : null,
+        messageId: numbers.length ? Number(numbers[numbers.length - 1]) : null,
       };
     }
 

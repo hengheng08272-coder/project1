@@ -116,6 +116,9 @@ const TEXT = {
     failed: (reason) => `❌ ទាញយកមិនបាន៖ ${reason}`,
     tooBig: (mb) => `ឯកសារនេះ ${mb}MB ធំជាងកំណត់ 50MB របស់ Telegram សម្រាប់ bot — ខ្ញុំផ្ញើជាតំណជំនួស។`,
     noMedia: "សាររបស់តំណនោះគ្មានវីដេអូ ឬសំឡេងទេ។",
+    privateVipOnly: "🔒 តំណក្រុម/channel ឯកជន (t.me/c/...) ប្រើបានតែសមាជិក VIP ប៉ុណ្ណោះ។ ចុច 💎 ទិញ / VIP ដើម្បីបើក។",
+    privateNoAccess: "🔒 មិនអាចចូលមើល chat ឯកជននោះបានទេ — គណនីរបស់ bot មិនមែនជាសមាជិកនៅក្នុងនោះទេ។",
+    inviteLink: "នោះជាតំណអញ្ជើញ (t.me/+...) មិនមែនតំណទៅកាន់ post ទេ។ សូមចូលក្នុង post វីដេអូ → ចុចលើវា → Copy Link រួចផ្ញើតំណនោះមក។",
   },
   en: {
     welcome: (name) =>
@@ -165,6 +168,9 @@ const TEXT = {
     failed: (reason) => `❌ Download failed: ${reason}`,
     tooBig: (mb) => `That file is ${mb}MB, over Telegram's 50MB bot upload limit — here's a link instead.`,
     noMedia: "That message has no video or audio in it.",
+    privateVipOnly: "🔒 Links into private groups/channels (t.me/c/...) are for VIP members. Tap 💎 Buy / VIP to unlock them.",
+    privateNoAccess: "🔒 Can't open that private chat — the bot's account isn't a member of it.",
+    inviteLink: "That's an invite link (t.me/+...), not a link to a post. Open the video post → tap it → Copy Link, and send that.",
   },
 };
 
