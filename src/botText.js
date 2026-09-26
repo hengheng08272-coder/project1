@@ -16,40 +16,50 @@ export const LANGUAGES = ["km", "en"];
 const MENU = [
   { action: "account", emoji: "m_account", km: "👤 គណនី", en: "👤 Account" },
   // Two doors instead of one: the public sites anyone may use, and the
-  // private-Telegram path that needs VIP. Splitting them means nobody pastes
-  // a VIP link only to be told no -- the label says which is which up front.
-  // Labels are kept short so two fit side by side; older, longer labels stay
-  // as aliases so a keyboard still on someone's screen keeps working.
+  // private-Telegram path that needs credit. The icon says which platforms.
+  // Older labels stay as aliases so a keyboard still on someone's screen
+  // keeps working.
   {
     action: "free",
-    emoji: "m_free",
-    km: "🆓 ទាញយក Free",
-    en: "🆓 Free Download",
+    emoji: "free_all",
+    km: "⬇️ Free · ទាញយកវីដេអូ",
+    en: "⬇️ Free · Download videos",
     aliases: [
+      "🆓 ទាញយក Free", "🆓 Free Download",
       "🆓 Free ♾ · YT · FB · IG · TikTok", "🆓 ទាញយក · FB · IG · YT · TikTok", "🆓 Free · FB · IG · YT · TikTok",
       "📥 ទាញយកតំណ", "📥 Download",
     ],
   },
   {
     action: "premium",
-    emoji: "m_pro",
-    km: "👑 Pro Telegram",
-    en: "👑 Pro Telegram",
-    aliases: ["👑 Pro · Telegram · 10 ឥតគិតថ្លៃ", "👑 Pro · Telegram · 10 free", "👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram"],
+    emoji: "dl",
+    km: "🔐 Videos Private",
+    en: "🔐 Private Videos",
+    aliases: [
+      "👑 Pro Telegram", "👑 Pro · Telegram · 10 ឥតគិតថ្លៃ", "👑 Pro · Telegram · 10 free",
+      "👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram",
+    ],
   },
   { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice", en: "🧾 KH Invoice", aliases: ["🧾 KH Invoice · វិក្កយបត្រ"] },
   { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
-  { action: "buy", emoji: "m_buy", km: "💎 ទិញ VIP", en: "💎 Buy VIP", aliases: ["💎 ទិញ / VIP", "💎 Buy / VIP"] },
+  { action: "buy", emoji: "credit", km: "💲 បន្ថែម Credit", en: "💲 Add Credit", aliases: ["💎 ទិញ VIP", "💎 Buy VIP", "💎 ទិញ / VIP", "💎 Buy / VIP"] },
+  {
+    action: "referral",
+    emoji: "invite",
+    km: "🎁 ណែនាំមិត្ត · ទទួល Free Credit",
+    en: "🎁 Invite friends · Get Free Credit",
+    aliases: ["👥 ណែនាំមិត្ត", "👥 Referral"],
+  },
+  // Kept for the commands and older keyboards; now reached from Account.
   { action: "history", emoji: "m_history", km: "📜 ប្រវត្តិ", en: "📜 History" },
-  { action: "referral", emoji: "m_referral", km: "👥 ណែនាំមិត្ត", en: "👥 Referral" },
   { action: "language", emoji: "m_language", km: "🌐 ភាសា", en: "🌐 Language" },
   { action: "help", emoji: "m_help", km: "❓ ជំនួយ", en: "❓ Help", aliases: ["❓ របៀបប្រើ", "❓ How to use"] },
   {
     action: "app",
-    emoji: "logo",
-    km: "🚀 Open App",
-    en: "🚀 Open App",
-    aliases: ["🚀 Open App · បើកកម្មវិធី", "🖥 បើកកម្មវិធី", "🖥 Open app"],
+    emoji: "app_tg",
+    km: "📲 Open App",
+    en: "📲 Open App",
+    aliases: ["🚀 Open App", "🚀 Open App · បើកកម្មវិធី", "🖥 បើកកម្មវិធី", "🖥 Open app"],
   },
 ];
 
@@ -87,19 +97,16 @@ export function mainKeyboard(language) {
     const item = MENU.find((m) => m.action === action);
     return { text: item[language] ?? item.en, emoji: item.emoji };
   };
-  const rows = [];
-  // Open App first, where it is seen -- it is also the chat's menu button.
   const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
-  if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
-  // Two per row, grouped: downloading, the two tools, the account and its
-  // money, then settings.
-  rows.push(
+  // Only what people use every day; history, language and help are under
+  // Account. Open App closes the list.
+  const rows = [
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("account"), button("buy")],
-    [button("history"), button("referral")],
-    [button("language"), button("help")],
-  );
+    [button("referral")],
+  ];
+  if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
   return { keyboard: rows, resize_keyboard: true, is_persistent: true };
 }
 
@@ -151,6 +158,9 @@ const TEXT = {
     referralJoined: (name) => `🎉 ${name} បានចូលរួមតាមតំណណែនាំរបស់អ្នក! អ្នកទទួលបានការទាញយកបន្ថែម។`,
     languagePrompt: "🌐 ជ្រើសរើសភាសា៖",
     languageSet: "{:ok:} បានប្ដូរទៅភាសាខ្មែរ។",
+    btnHistory: "📜 ប្រវត្តិ",
+    btnLanguage: "🌐 ភាសា",
+    btnHelp: "❓ ជំនួយ",
     openApp: (url) => `🖥 បើកកម្មវិធីពេញលេញ៖\n${url}`,
     openAppMissing: "🖥 កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
     sendLink: "📥 ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
@@ -250,6 +260,9 @@ const TEXT = {
     referralJoined: (name) => `🎉 ${name} joined through your referral link! Extra downloads added.`,
     languagePrompt: "🌐 Choose a language:",
     languageSet: "{:ok:} Switched to English.",
+    btnHistory: "📜 History",
+    btnLanguage: "🌐 Language",
+    btnHelp: "❓ Help",
     openApp: (url) => `🖥 Open the full app:\n${url}`,
     openAppMissing: "🖥 The web app URL isn't configured yet.",
     sendLink: "📥 Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",

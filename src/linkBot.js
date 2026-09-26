@@ -188,7 +188,15 @@ async function showAccount(chatId, user) {
     `├ 🆓 YT · FB · IG · TikTok: ♾ ${t.unlimited}`,
     `└ 👑 Telegram: ${quota.premium ? `♾ ${t.unlimited}` : `${progressBar(quota.used, quota.total)} ${quota.left} / ${quota.total}`}`,
   ];
-  await send(chatId, lines.join("\n"));
+  // History, language and help live here rather than on the main keyboard.
+  await send(chatId, lines.join("\n"), {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t.btnHistory, emoji: "m_history", callback_data: "bot:acct:history" }, { text: t.btnLanguage, emoji: "m_language", callback_data: "bot:acct:language" }],
+        [{ text: t.btnHelp, emoji: "m_help", callback_data: "bot:acct:help" }],
+      ],
+    },
+  });
 }
 
 async function showHistory(chatId, user) {
@@ -411,6 +419,16 @@ export async function handleCallback(cq) {
   const chatId = cq.message?.chat?.id;
   const userId = cq.from?.id;
   if (!chatId || !userId) return false;
+
+  if (kind === "acct") {
+    const user = await ensureUser(cq.from, null);
+    const t = texts(user.language);
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    if (value === "history") await showHistory(chatId, user);
+    else if (value === "language") await send(chatId, t.languagePrompt, { reply_markup: languageKeyboard() });
+    else await send(chatId, t.help);
+    return true;
+  }
 
   if (kind !== "lang") {
     const user = await ensureUser(cq.from, null);

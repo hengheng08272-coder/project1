@@ -1008,6 +1008,124 @@ tiled("tiktok", ["#2A2A2A", "#000000"], (g, t) => {
   note(0, 0, "#FFFFFF");
 }, { dark: true, animate: true });
 
+// ------------------------------------------------------------ combined icons
+// Drawn after the platform tiles, which two of them reuse.
+const pop = (t, at) => ease((t - at) / 0.12) * (1 + 0.15 * Math.max(0, Math.sin(Math.PI * ((t - at - 0.12) / 0.15))));
+
+// Free: the download arrow ringed by the four platforms it takes.
+{
+  const arrow = await loadImage(fs.readFileSync(path.join(SRC, "download.png")));
+  const logos = await Promise.all(["facebook", "youtube", "instagram", "tiktok"].map(async (n) => loadImage(fs.readFileSync(path.join(OUT, `${n}.png`)))));
+  icon("free_all", (g, t) => {
+    const bob = 2.5 * wave(t, 2);
+    g.drawImage(arrow, 16, 14 + bob, 68, 68);
+    [[2, 2], [72, 2], [2, 72], [72, 72]].forEach(([x, y], i) => {
+      const s = 26 * (t < 0.62 ? pop(t, i * 0.12) : 1);
+      if (s > 0.5) g.drawImage(logos[i], x + 13 - s / 2, y + 13 - s / 2, s, s);
+    });
+}, { still: 0.9, glints: false });
+}
+
+// Invite friends, get credit: two friends, a +coin rising between them.
+icon("invite", (g, t) => {
+  const friend = (x, style, nod) => {
+    line(g, 6, style);
+    g.beginPath();
+    g.arc(x, 50 + nod, 10, 0, TAU);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(x - 17, 90);
+    g.bezierCurveTo(x - 17, 68, x + 17, 68, x + 17, 90);
+    g.stroke();
+  };
+  friend(24, blue(g, 38, 90), 1.5 * wave(t));
+  friend(76, blue(g, 38, 90), 1.5 * wave(t, 1, 0.5));
+  const p = ease((t % 1) / 0.5);
+  const y = 44 - 22 * p;
+  const k = 0.7 + 0.3 * p;
+  g.fillStyle = gold(g, y - 16, y + 16);
+  g.beginPath();
+  g.arc(50, y, 16 * k, 0, TAU);
+  g.fill();
+  g.fillStyle = "#FFFFFF";
+  g.font = `800 ${Math.round(20 * k)}px Inter`;
+  g.textAlign = "center";
+  g.fillText("+", 50, y + 7 * k);
+}, { still: 0.6 });
+
+// Open App: Telegram's plane with a download badge.
+icon("app_tg", (g, t) => {
+  const bg = g.createLinearGradient(0, 8, 0, 84);
+  bg.addColorStop(0, "#3FC1FF");
+  bg.addColorStop(1, "#1C8BD6");
+  g.fillStyle = bg;
+  g.beginPath();
+  g.arc(46, 46, 38, 0, TAU);
+  g.fill();
+  const fly = 2.5 * wave(t);
+  g.save();
+  g.translate(fly, -fly);
+  g.fillStyle = "#FFFFFF";
+  path2(g, [[22, 45], [66, 27], [58, 66], [45, 56], [38, 63], [37, 52], [57, 35], [34, 50]]);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#D3ECFA";
+  path2(g, [[37, 52], [38, 63], [45, 56]]);
+  g.closePath();
+  g.fill();
+  g.restore();
+  // The badge: a gold disc, a white arrow dropping into it.
+  g.fillStyle = gold(g, 58, 96);
+  g.beginPath();
+  g.arc(76, 76, 20, 0, TAU);
+  g.fill();
+  line(g, 3, "#FFFFFF");
+  g.beginPath();
+  g.arc(76, 76, 20, 0, TAU);
+  g.stroke();
+  const d = 3 * Math.max(0, wave(t, 2));
+  line(g, 5, "#FFFFFF");
+  path2(g, [[76, 64 + d], [76, 82 + d]]);
+  g.stroke();
+  path2(g, [[69, 76 + d], [76, 83 + d], [83, 76 + d]]);
+  g.stroke();
+}, { glints: false });
+
+// Add Credit: a gold $ coin that spins, a blue plus that pulses.
+icon("credit", (g, t) => {
+  const spin = Math.cos(TAU * ease(t / 0.6));
+  g.save();
+  g.translate(44, 54);
+  g.scale(Math.max(0.12, Math.abs(spin)), 1);
+  g.fillStyle = gold(g, -36, 36);
+  g.beginPath();
+  g.arc(0, 0, 36, 0, TAU);
+  g.fill();
+  line(g, 3, "rgba(255,255,255,0.75)");
+  g.beginPath();
+  g.arc(0, 0, 29, 0, TAU);
+  g.stroke();
+  if (Math.abs(spin) > 0.3) {
+    g.fillStyle = "#FFFFFF";
+    g.font = "800 44px Inter";
+    g.textAlign = "center";
+    g.fillText("$", 0, 16);
+  }
+  g.restore();
+  const k = 1 + 0.18 * Math.max(0, wave(t, 2, 0.25));
+  g.translate(80, 22);
+  g.scale(k, k);
+  g.fillStyle = blue(g, -16, 16);
+  g.beginPath();
+  g.arc(0, 0, 16, 0, TAU);
+  g.fill();
+  line(g, 5, "#FFFFFF");
+  path2(g, [[-8, 0], [8, 0]]);
+  g.stroke();
+  path2(g, [[0, -8], [0, 8]]);
+  g.stroke();
+}, { still: 0.8 });
+
 // ------------------------------------------------------------ profile video
 // The SaveIt badge full-bleed at 640x640 as an MP4 loop and a PNG, for an
 // animated profile photo (Telegram Premium). Written to assets/profile.

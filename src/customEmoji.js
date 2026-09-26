@@ -61,6 +61,11 @@ export const EMOJI = {
   inv_summary: ["inv_summary", "📋"],
   inv_shop: ["inv_shop", "🏪"],
   inv_back: ["inv_back", "⬅️"],
+  // combined icons on the main keyboard
+  free_all: ["free_all", "⬇️"],
+  app_tg: ["app_tg", "📲"],
+  credit: ["credit", "💲"],
+  invite: ["invite", "🎁"],
   // replies & extras
   diamond: ["vip", "💎"],
   sparkle: ["sparkle", "✨"],
