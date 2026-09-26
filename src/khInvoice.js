@@ -512,6 +512,7 @@ export async function showPlans(chatId, user) {
       inline_keyboard: list.map((pkg) => [
         {
           text: `${user.language === "en" ? pkg.title_en : pkg.title_km} — $${Number(pkg.price_usd).toFixed(2)}`,
+          emoji: "khqr",
           callback_data: `bot:buy:${pkg.id}`,
         },
       ]),

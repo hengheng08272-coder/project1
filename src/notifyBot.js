@@ -6,15 +6,27 @@
  * do both jobs and the operator has to set up only one.
  */
 import { config } from "./config.js";
+import { decorate, refusedEmoji } from "./customEmoji.js";
 
-export async function call(method, body) {
-  if (!config.telegramLoginBotToken) return null;
+async function post(method, body) {
   const res = await fetch(`https://api.telegram.org/bot${config.telegramLoginBotToken}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
+  return res.json().catch(() => ({}));
+}
+
+/**
+ * One Bot API call. Text and buttons may carry custom emoji tokens
+ * ({:yt:}, `emoji: "aba"` -- see customEmoji.js); if Telegram refuses the
+ * custom emoji, the same message goes out once more with plain emoji, so a
+ * logo problem can never swallow a message.
+ */
+export async function call(method, body) {
+  if (!config.telegramLoginBotToken) return null;
+  let data = await post(method, await decorate(body));
+  if (!data.ok && refusedEmoji(data)) data = await post(method, await decorate(body, { plain: true }));
   if (!data.ok) console.error(`Telegram ${method} failed:`, JSON.stringify(data));
   return data;
 }

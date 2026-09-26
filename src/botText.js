@@ -136,9 +136,9 @@ const TEXT = {
     sendLink: "📥 ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
     freeScreen: () =>
       `🆓 SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
-      `▶️ YouTube     📘 Facebook\n` +
-      `📸 Instagram   🎵 TikTok\n` +
-      `✖️ X (Twitter)  🎮 Twitch\n` +
+      `{:yt:} YouTube     {:fb:} Facebook\n` +
+      `{:ig:} Instagram   {:tt:} TikTok\n` +
+      `{:x:} X (Twitter)  🎮 Twitch\n` +
       `🔗 .mp4 · .m3u8 · .mp3\n` +
       `➕ គេហទំព័រជាង ១៨០០ ផ្សេងទៀត\n\n` +
       `♾ ទាញយកប៉ុន្មានក៏បាន — មិនគិតលុយ មិនកំណត់ចំនួន\n\n` +
@@ -235,9 +235,9 @@ const TEXT = {
     sendLink: "📥 Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
     freeScreen: () =>
       `🆓 SaveIt Free — free & unlimited\n\n` +
-      `▶️ YouTube     📘 Facebook\n` +
-      `📸 Instagram   🎵 TikTok\n` +
-      `✖️ X (Twitter)  🎮 Twitch\n` +
+      `{:yt:} YouTube     {:fb:} Facebook\n` +
+      `{:ig:} Instagram   {:tt:} TikTok\n` +
+      `{:x:} X (Twitter)  🎮 Twitch\n` +
       `🔗 .mp4 · .m3u8 · .mp3\n` +
       `➕ ~1800 more sites\n\n` +
       `♾ As many as you like — no charge, no limit\n\n` +

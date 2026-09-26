@@ -19,6 +19,7 @@ import { PNG } from "pngjs";
 import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { paymentSettings, savePaymentSettings } from "./botConfig.js";
+import { buildPack, decorate, refusedEmoji } from "./customEmoji.js";
 import { applyKhqrTemplate, khqrMd5, parseKhqr, validateKhqrTemplate } from "./khqr.js";
 import { renderKhqrCard } from "./khqrCard.js";
 import * as khInvoice from "./khInvoice.js";
@@ -42,7 +43,7 @@ const L = {
     chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
-      `📷 ស្កេន QR ដោយ ABA, ACLEDA, Wing ឬ App ធនាគារណាក៏បាន\n` +
+      `📷 ស្កេនដោយ {:aba:} ABA · {:wing:} Wing · {:truemoney:} TrueMoney · {:bakong:} Bakong ឬ App ធនាគារ KHQR ណាក៏បាន\n` +
       `💡 នៅលើទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
       `✅ បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
     cancel: "❌ បោះបង់",
@@ -60,7 +61,7 @@ const L = {
     chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
       `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
-      `📷 Scan with ABA, ACLEDA, Wing or any KHQR bank app\n` +
+      `📷 Scan with {:aba:} ABA · {:wing:} Wing · {:truemoney:} TrueMoney · {:bakong:} Bakong or any KHQR bank app\n` +
       `💡 Same phone: long-press the picture → save → open it in your bank app\n` +
       `✅ Paid? Send the receipt screenshot here`,
     cancel: "❌ Cancel",
@@ -77,16 +78,22 @@ const t = (language) => L[language] ?? L.km;
 
 /** sendPhoto with bytes (multipart) -- JSON can't carry a generated PNG. */
 async function sendPhotoBuffer(chatId, buffer, caption, replyMarkup) {
-  const form = new FormData();
-  form.set("chat_id", String(chatId));
-  form.set("photo", new Blob([buffer], { type: "image/png" }), "khqr.png");
-  if (caption) form.set("caption", caption);
-  if (replyMarkup) form.set("reply_markup", JSON.stringify(replyMarkup));
-  const res = await fetch(`https://api.telegram.org/bot${config.telegramLoginBotToken}/sendPhoto`, {
-    method: "POST",
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
+  const attempt = async (plain) => {
+    const body = await decorate({ caption, reply_markup: replyMarkup }, { plain });
+    const form = new FormData();
+    form.set("chat_id", String(chatId));
+    form.set("photo", new Blob([buffer], { type: "image/png" }), "khqr.png");
+    if (body.caption) form.set("caption", body.caption);
+    if (body.caption_entities) form.set("caption_entities", JSON.stringify(body.caption_entities));
+    if (body.reply_markup) form.set("reply_markup", JSON.stringify(body.reply_markup));
+    const res = await fetch(`https://api.telegram.org/bot${config.telegramLoginBotToken}/sendPhoto`, {
+      method: "POST",
+      body: form,
+    });
+    return res.json().catch(() => ({}));
+  };
+  let data = await attempt(false);
+  if (!data.ok && refusedEmoji(data)) data = await attempt(true);
   if (!data.ok) console.error("Telegram sendPhoto failed:", JSON.stringify(data));
   return data;
 }
@@ -144,7 +151,7 @@ export async function showPackages(chatId, user, freeLeft) {
     text: `${standing}\n\n${s.choose}`,
     reply_markup: {
       inline_keyboard: list.map((pkg) => [
-        { text: `${packageTitle(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`, callback_data: `bot:buy:${pkg.id}` },
+        { text: `${packageTitle(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`, emoji: "khqr", callback_data: `bot:buy:${pkg.id}` },
       ]),
     },
   });
@@ -181,8 +188,8 @@ async function startOrder(chatId, user, packageId, bank = null) {
       text: s.chooseBank(packageTitle(pkg, user.language), amount.toFixed(2)),
       reply_markup: {
         inline_keyboard: [[
-          { text: `🏦 ${extra.primary_label}`, callback_data: `bot:bank:${pkg.id}~p` },
-          { text: `🏦 ${extra.alt_label}`, callback_data: `bot:bank:${pkg.id}~a` },
+          { text: `🏦 ${extra.primary_label}`, emoji: "aba", callback_data: `bot:bank:${pkg.id}~p` },
+          { text: `🏦 ${extra.alt_label}`, emoji: "khqr", callback_data: `bot:bank:${pkg.id}~a` },
         ]],
       },
     });
@@ -414,6 +421,11 @@ async function qrStatus(chatId) {
 /** Operator text commands for payments. Returns true when handled. */
 export async function handleAdminPayCommand(chatId, text) {
   if (!isAdminChat(chatId)) return false;
+  if (/^\/makeemoji$/i.test(text)) {
+    await call("sendMessage", { chat_id: chatId, text: "⏳ Building the custom emoji pack…" });
+    await call("sendMessage", { chat_id: chatId, text: await buildPack(chatId) });
+    return true;
+  }
   if (/^\/qrstatus$/i.test(text)) {
     await qrStatus(chatId);
     return true;
