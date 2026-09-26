@@ -17,6 +17,7 @@ import path from "node:path";
 
 import { config } from "./config.js";
 import { actionForLabel, languageKeyboard, mainKeyboard, texts } from "./botText.js";
+import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
 import { db, nowIso, rows } from "./db.js";
@@ -234,6 +235,13 @@ export async function handleMessage(message) {
   // handling below, since a photo usually has no text at all.
   if (message.photo && (await botPay.handlePhoto(message, user))) return;
 
+  // A message forwarded out of the storage channel names it, so the operator
+  // never has to dig a raw -100... id out of Telegram.
+  if (message.forward_from_chat && botPay.isAdminChat(chatId)) {
+    await send(chatId, await botDeliver.setStorageFromForward(message));
+    return;
+  }
+
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
     await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language) });
@@ -319,6 +327,17 @@ async function handleAdminCommand(chatId, text) {
     return true;
   }
 
+  const setStorage = /^\/setstorage(?:\s+(-?\d+))?$/i.exec(text);
+  if (setStorage) {
+    await send(
+      chatId,
+      setStorage[1]
+        ? await botDeliver.saveStorageChat(setStorage[1], null)
+        : await botDeliver.setStorageFromForward(null)
+    );
+    return true;
+  }
+
   const broadcast = /^\/broadcast\s+([\s\S]+)$/.exec(text);
   if (broadcast) {
     const message = broadcast[1];
@@ -377,9 +396,11 @@ export async function handleCallback(cq) {
   return true;
 }
 
+const isAdminChat = (chatId) =>
+  Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
+
 function mayUsePrivateLinks(chatId, quota) {
-  const isOperator = Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
-  if (isOperator) return true;
+  if (isAdminChat(chatId)) return true;
   if (config.botPrivateLinks === "all") return true;
   if (config.botPrivateLinks === "admin") return false;
   return quota.premium;
@@ -426,6 +447,25 @@ async function sendTelegramPost(chatId, user, url, quota) {
   }
 
   await send(chatId, t.working);
+
+  // Fastest and best path: have the userbot forward the post into the storage
+  // channel and let the bot copy it from there. Telegram moves its own file,
+  // so the person gets a real, playable video of any size in seconds -- no
+  // download here, and none of the Bot API's 50MB upload limit. Everything
+  // below is the fallback for when that isn't set up (or the source group
+  // forbids forwarding).
+  const delivered = await botDeliver.deliverTelegramPost({
+    userChatId: chatId,
+    sourceChatId: parsed.chatId,
+    messageId: parsed.messageId,
+  });
+  if (delivered.ok) {
+    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
+    return;
+  }
+  if (delivered.reason === "bot-not-in-storage" && isAdminChat(chatId)) {
+    await send(chatId, "⚠️ Storage channel is set, but I'm not an admin of it — add me and try again.");
+  }
 
   let localPath = null;
   try {
