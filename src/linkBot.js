@@ -28,7 +28,7 @@ import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
 import * as r2 from "./r2.js";
 import { mediaInfo } from "./scanner.js";
-import { getClientForChat, isAuthorized, listAccounts, parseTelegramLink, TelegramBusyError } from "./telegram.js";
+import { getClient, getClientForChat, isAuthorized, listAccounts, parseTelegramLink, TelegramBusyError } from "./telegram.js";
 
 // Telegram's own Bot API cap for a bot sending a file -- not configurable,
 // and well below what the userbot itself can fetch, so this only limits the
@@ -389,6 +389,14 @@ async function handleAdminCommand(chatId, text) {
     return true;
   }
 
+  const speedTest = /^\/dlspeed(?:\s+(\S+))?$/i.exec(text);
+  if (speedTest) {
+    await send(chatId, await benchmarkDownload(speedTest[1]));
+    return true;
+  }
+
+
+
   const broadcast = /^\/broadcast\s+([\s\S]+)$/.exec(text);
   if (broadcast) {
     const message = broadcast[1];
@@ -414,6 +422,74 @@ async function handleAdminCommand(chatId, text) {
  * API's setMyProfilePhoto takes an animated one (an MP4 of up to 5 s at
  * 640x640), uploaded fresh each time -- a file_id cannot be reused here.
  */
+/**
+ * /dlspeed alone: which connected account(s) have Telegram Premium (the
+ * flag that raises Telegram's own per-connection speed cap -- nothing this
+ * bot's code can grant or fake). /dlspeed <t.me/... link>: also downloads
+ * that post's media through the userbot -- the same client.downloadMedia
+ * path a fallback link download uses (skipping the forward-to-storage
+ * shortcut, which never touches this code at all) -- and times it, so
+ * "is it faster now" has a real MB/s next to it instead of a guess.
+ */
+async function benchmarkDownload(link) {
+  const lines = ["⚡ Download speed"];
+  const accounts = [
+    { id: null, label: "default" },
+    ...(await listAccounts()).map((a) => ({ id: a.id, label: a.label || a.phone || a.id })),
+  ];
+  for (const { id, label } of accounts) {
+    try {
+      const client = await getClient({ accountId: id, requireAuth: false });
+      if (!(await client.isUserAuthorized())) continue;
+      const me = await client.getMe();
+      lines.push(`${me.premium ? "💎 Premium" : "◻️ Free"} · ${label} (@${me.username || me.id})`);
+    } catch (err) {
+      lines.push(`⚠️ ${label}: ${err?.message ?? err}`);
+    }
+  }
+
+  if (link) {
+    lines.push("");
+    try {
+      const parsed = parseTelegramLink(link);
+      const { client, entity, accountId } = await getClientForChat(parsed.chatId);
+      const found = await withFloodRetry(() => client.getMessages(entity, { ids: parsed.messageId }), {
+        label: `speed test fetch ${parsed.chatId}/${parsed.messageId}`,
+      });
+      const msg = Array.isArray(found) ? found[0] : found;
+      const info = msg?.media ? mediaInfo(msg) : null;
+      if (!info) {
+        lines.push("⚠️ That message has no downloadable media.");
+        return lines.join("\n");
+      }
+      const account = accounts.find((a) => a.id === accountId);
+      const me = await client.getMe();
+      await fs.mkdir(config.downloadDir, { recursive: true });
+      const localPath = path.join(config.downloadDir, `speedtest-${Date.now()}-${info.fileName}`);
+      const started = Date.now();
+      try {
+        await withFloodRetry(() => client.downloadMedia(msg, { outputFile: localPath }), {
+          label: `speed test download ${parsed.chatId}/${parsed.messageId}`,
+        });
+        const elapsedS = (Date.now() - started) / 1000;
+        const { size } = await fs.stat(localPath);
+        const mb = size / (1024 * 1024);
+        lines.push(
+          `Downloaded via ${account?.label ?? "default"} (${me.premium ? "💎 Premium" : "◻️ Free"}):\n` +
+            `${mb.toFixed(1)} MB in ${elapsedS.toFixed(1)}s → ${(mb / Math.max(elapsedS, 0.01)).toFixed(2)} MB/s`
+        );
+      } finally {
+        await fs.rm(localPath, { force: true }).catch(() => {});
+      }
+    } catch (err) {
+      lines.push(`⚠️ Test download failed: ${err?.message ?? err}`);
+    }
+  } else {
+    lines.push("", "Send /dlspeed <t.me/…> with a link to a video to also time a real download through it.");
+  }
+  return lines.join("\n");
+}
+
 async function setBotProfileVideo(which) {
   if (!config.telegramLoginBotToken) return "⚠️ No bot token is set.";
   const name = /^(kh|inv|invoice)/i.test(which ?? "") ? "kh-invoice-logo" : "saveit-logo";
