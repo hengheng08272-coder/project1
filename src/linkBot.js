@@ -423,7 +423,7 @@ async function handleAdminCommand(chatId, text) {
     }
     await send(chatId, "⏳ កំពុង scan Group… (Group ធំអាចចំណាយពេលពីរបីនាទី)");
     try {
-      await send(chatId, await watch.addOrScanGroup(watchGroup[1]));
+      await sendLong(chatId, await watch.addOrScanGroup(watchGroup[1]));
     } catch (err) {
       await send(
         chatId,
@@ -440,7 +440,21 @@ async function handleAdminCommand(chatId, text) {
   }
 
   if (text === "/shows") {
-    await send(chatId, await watch.listAllTopics());
+    await sendLong(chatId, await watch.listAllTopics());
+    return true;
+  }
+
+  const setGroup = /^\/setgroup(?:\s+(\S+)\s+(anime|donghua|movie)(?:\s+(ongoing|completed))?(?:\s+(\d+))?)?$/i.exec(text);
+  if (setGroup) {
+    if (!setGroup[1]) {
+      await send(chatId, watch.ADMIN_HELP);
+      return true;
+    }
+    try {
+      await send(chatId, await watch.setGroupKind(setGroup[1], setGroup[2].toLowerCase(), setGroup[3]?.toLowerCase(), setGroup[4]));
+    } catch (err) {
+      await send(chatId, `⚠️ ${err?.message ?? err}`);
+    }
     return true;
   }
 
@@ -550,6 +564,19 @@ async function benchmarkDownload(link) {
 }
 
 /** Downloads a Telegram-hosted photo's bytes, for /setshow's poster. */
+/** Sends text over Telegram's 4096-character limit as several messages, split on lines. */
+async function sendLong(chatId, text, limit = 3800) {
+  let chunk = "";
+  for (const line of String(text).split("\n")) {
+    if (chunk && chunk.length + line.length + 1 > limit) {
+      await send(chatId, chunk);
+      chunk = "";
+    }
+    chunk += (chunk ? "\n" : "") + line;
+  }
+  if (chunk) await send(chatId, chunk);
+}
+
 async function fetchTelegramPhoto(fileId) {
   const info = await call("getFile", { file_id: fileId });
   const filePath = info?.result?.file_path;

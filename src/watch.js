@@ -428,9 +428,41 @@ export const ADMIN_HELP =
   "   (ឬ /watchgroup -1001234567890)\n" +
   "   Bot នឹង scan Topic និង EP ទាំងអស់ដោយស្វ័យប្រវត្តិ។\n" +
   "   ⚠️ គណនី userbot ត្រូវតែជាសមាជិក Group នោះ ហើយ Group ត្រូវបើក Topics។\n\n" +
-  "2️⃣ /shows — បង្ហាញរឿង (Topic) ទាំងអស់ ជាមួយ id របស់វា\n\n" +
+  "2️⃣ /setgroup <link ឬ chat id> <anime|donghua|movie> [ongoing|completed] [credit]\n" +
+  "   ដាក់លក់រឿងទាំងអស់ក្នុង Group ក្នុងពេលតែមួយ ឧ. /setgroup -1004468850700 donghua\n\n" +
+  "   /shows — បង្ហាញរឿង (Topic) ទាំងអស់ ជាមួយ id របស់វា\n\n" +
   "3️⃣ /setshow <topic id> <anime|donghua|movie> [ongoing|completed] [credit]\n" +
   "   ផ្ញើជា caption លើរូប poster (forward ពី @AnimetioMini_bot ក៏បាន)\n" +
   "   → poster ក្លាយជា emoji របស់រឿងនោះ\n" +
   "   ឧ. /setshow 9f2c…e1 anime ongoing\n\n" +
   "ចំណាំ៖ ដើម្បីផ្ញើ EP ពី Group ត្រូវកំណត់ storage channel (/setstorage) ជាមុនសិន។";
+
+/**
+ * /setgroup <link|chat id> <anime|donghua|movie> [ongoing|completed] [credits]
+ * Puts every topic of one registered group on sale at once, keeping any
+ * poster a show already has. One write for the whole group.
+ */
+export async function setGroupKind(chatId, kind, status, credits) {
+  if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
+  const id = String(parseTelegramLink(chatId).chatId);
+  const [group] = rows(await db().from("groups").select("id, title").eq("chat_id", id).limit(1));
+  if (!group) throw new Error("Group not registered yet -- send /watchgroup with it first.");
+  const topics = await fetchAll(() => db().from("topics").select("id").eq("group_id", group.id).order("id"));
+  if (!topics.length) throw new Error("That group has no topics yet -- run /watchgroup on it.");
+
+  const all = await showMeta();
+  const next = { ...all };
+  for (const topic of topics) {
+    next[topic.id] = {
+      on_sale: true,
+      ep_credits: 1,
+      status: "ongoing",
+      ...all[topic.id],
+      kind,
+      ...(status ? { status } : {}),
+      ...(credits ? { ep_credits: Math.max(1, Math.round(Number(credits))) } : {}),
+    };
+  }
+  await writeJson(SHOWS_FILE, next);
+  return `✅ ${topics.length} រឿងក្នុង «${group.title}» ដាក់លក់ជា ${kind}${status ? ` (${status})` : ""}${credits ? `, ${credits} Credit/EP` : ""}។\nអ្នកប្រើឃើញភ្លាមក្នុង 🎬 មើលរឿង។`;
+}
