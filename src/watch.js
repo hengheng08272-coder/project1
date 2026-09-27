@@ -176,6 +176,21 @@ const L = {
 };
 const tx = (language) => L[language] ?? L.km;
 
+// Telegram refuses a reply_markup past a certain size ("reply markup is too
+// long") -- a group with dozens of shows, or a show with hundreds of
+// episodes, hit this the first time (67 shows in one list, one row each).
+// Paging keeps every screen well under that regardless of catalog size.
+const SHOWS_PER_PAGE = 10;
+const EPS_PER_PAGE = 40; // 10 rows of 4
+
+/** A [prev, next] row, only the buttons that actually apply. */
+function pageNav(prefix, page, hasMore, t) {
+  const row = [];
+  if (page > 0) row.push({ text: "◀️", callback_data: `${prefix}:${page - 1}` });
+  if (hasMore) row.push({ text: "▶️", callback_data: `${prefix}:${page + 1}` });
+  return row.length ? [row] : [];
+}
+
 // ------------------------------------------------------------ browse
 
 async function showsInKind(kind) {
@@ -196,41 +211,47 @@ export async function showGenres(chatId, language) {
     text: t.section,
     reply_markup: {
       inline_keyboard: [
-        KINDS.map((k) => ({ text: KIND_LABEL[k][language] ?? KIND_LABEL[k].km, callback_data: `watch:kind:${k}` })),
+        KINDS.map((k) => ({ text: KIND_LABEL[k][language] ?? KIND_LABEL[k].km, callback_data: `watch:kind:${k}:0` })),
         [{ text: t.back, emoji: "inv_back", callback_data: "watch:exit" }],
       ],
     },
   });
 }
 
-async function showKindList(chatId, language, kind) {
+async function showKindList(chatId, language, kind, page = 0) {
   const t = tx(language);
-  const list = await showsInKind(kind);
-  if (!list.length) {
+  const all = await showsInKind(kind);
+  if (!all.length) {
     await call("sendMessage", { chat_id: chatId, text: t.noShows });
     return;
   }
+  const start = page * SHOWS_PER_PAGE;
+  const list = all.slice(start, start + SHOWS_PER_PAGE);
   const rowsOut = list.map(({ topic, meta }) => [
     {
       text: `${meta.poster_emoji ? `{:${meta.poster_emoji}:} ` : ""}${topic.title}${meta.status === "completed" ? " ✅" : " 🔴"}`,
-      callback_data: `watch:show:${topic.id}`,
+      callback_data: `watch:show:${topic.id}:0`,
     },
   ]);
+  rowsOut.push(...pageNav(`watch:kind:${kind}`, page, start + SHOWS_PER_PAGE < all.length, t));
   rowsOut.push([{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }]); // one level up: the genre picker
-  await call("sendMessage", { chat_id: chatId, text: t.showList(kind), reply_markup: { inline_keyboard: rowsOut } });
+  const pageNote = all.length > SHOWS_PER_PAGE ? ` (${start + 1}-${Math.min(start + SHOWS_PER_PAGE, all.length)}/${all.length})` : "";
+  await call("sendMessage", { chat_id: chatId, text: t.showList(kind) + pageNote, reply_markup: { inline_keyboard: rowsOut } });
 }
 
-async function showEpisodeList(chatId, user, topicId) {
+async function showEpisodeList(chatId, user, topicId, page = 0) {
   const t = tx(user.language);
   const [topic] = rows(await db().from("topics").select("*").eq("id", topicId).limit(1));
   if (!topic) return;
   const meta = (await showMeta())[topicId] ?? {};
-  const episodes = await fetchAll(() =>
+  const allEpisodes = await fetchAll(() =>
     db().from("episodes").select("id, ep_number").eq("topic_id", topicId).order("ep_number")
   );
   const w = await walletFor(user.telegram_user_id);
   const credits = meta.ep_credits ?? 1;
 
+  const start = page * EPS_PER_PAGE;
+  const episodes = allEpisodes.slice(start, start + EPS_PER_PAGE);
   const buttons = [];
   let row = [];
   for (const ep of episodes) {
@@ -242,11 +263,14 @@ async function showEpisodeList(chatId, user, topicId) {
     }
   }
   if (row.length) buttons.push(row);
-  buttons.push([{ text: t.back, emoji: "inv_back", callback_data: `watch:kind:${meta.kind}` }]);
+  buttons.push(...pageNav(`watch:show:${topicId}`, page, start + EPS_PER_PAGE < allEpisodes.length, t));
+  buttons.push([{ text: t.back, emoji: "inv_back", callback_data: `watch:kind:${meta.kind}:0` }]);
 
+  const pageNote =
+    allEpisodes.length > EPS_PER_PAGE ? ` (${start + 1}-${Math.min(start + EPS_PER_PAGE, allEpisodes.length)}/${allEpisodes.length})` : "";
   await call("sendMessage", {
     chat_id: chatId,
-    text: `${t.epList(topic.title, credits)}\n\n${t.balance(w.credits ?? 0)}`,
+    text: `${t.epList(topic.title, credits)}${pageNote}\n\n${t.balance(w.credits ?? 0)}`,
     reply_markup: { inline_keyboard: buttons },
   });
 }
@@ -330,7 +354,8 @@ export async function handleCallback(cq, user) {
   if (!data.startsWith("watch:")) return false;
   const chatId = cq.message?.chat?.id;
   if (!chatId) return true;
-  const [, kind, value] = data.split(":");
+  const [, kind, value, pageStr] = data.split(":");
+  const page = Number(pageStr) || 0;
 
   if (kind === "home") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
@@ -348,12 +373,12 @@ export async function handleCallback(cq, user) {
   }
   if (kind === "kind") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await showKindList(chatId, user.language, value);
+    await showKindList(chatId, user.language, value, page);
     return true;
   }
   if (kind === "show") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await showEpisodeList(chatId, user, value);
+    await showEpisodeList(chatId, user, value, page);
     return true;
   }
   if (kind === "ep") {
