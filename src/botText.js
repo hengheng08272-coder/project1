@@ -32,7 +32,7 @@ const MENU = [
   },
   {
     action: "premium",
-    emoji: "dl",
+    emoji: "lock",
     km: "🔐 Videos Private",
     en: "🔐 Private Videos",
     aliases: [

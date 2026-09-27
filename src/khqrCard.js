@@ -105,22 +105,29 @@ function payloadFacts(payload) {
 }
 
 /** Draws the QR modules crisply at an exact pixel size. */
-function drawQr(g, payload, x, y, size) {
+function drawQr(g, payload, x, y, size, scale) {
   // H: survives the ~20% the centre mark covers, with room to spare.
   const qr = QRCode.create(payload, { errorCorrectionLevel: "H" });
   const n = qr.modules.size;
   const quiet = 1;
-  const cell = size / (n + quiet * 2);
+  const total = n + quiet * 2;
+  // The module size is snapped to whole device pixels: at a small card size
+  // `size / total` lands between pixels, and rounding each module's edges
+  // out independently (the old approach) then makes some a pixel wider than
+  // others. A camera reads that fine, but it was enough to confuse a strict
+  // decoder -- the very thing this card exists to be scanned by.
+  const cellPx = Math.max(1, Math.round((size * scale) / total));
+  const cell = cellPx / scale;
+  const drawn = cell * total;
+  const ox = x + (size - drawn) / 2; // centre the (slightly smaller) grid in the box
+  const oy = y + (size - drawn) / 2;
   g.fillStyle = "#FFFFFF";
   g.fillRect(x, y, size, size);
   g.fillStyle = "#0A101E";
   for (let r = 0; r < n; r += 1) {
     for (let c = 0; c < n; c += 1) {
       if (qr.modules.get(r, c)) {
-        const px = x + (c + quiet) * cell;
-        const py = y + (r + quiet) * cell;
-        // Rounded out to whole pixels so neighbouring modules meet without hairlines.
-        g.fillRect(Math.floor(px), Math.floor(py), Math.ceil(px + cell) - Math.floor(px), Math.ceil(py + cell) - Math.floor(py));
+        g.fillRect(ox + (c + quiet) * cell, oy + (r + quiet) * cell, cell, cell);
       }
     }
   }
@@ -164,14 +171,16 @@ export async function renderKhqrCard(payload, { merchantName = "", scale = 3 } =
   registerFonts();
   const facts = payloadFacts(payload);
 
-  const W = 240;
-  const pad = 18;
-  const redH = 40;
+  // A compact card: small enough in the chat to take in at a glance, still
+  // sharp enough at 3x for another phone's camera to read off this screen.
+  const W = 196;
+  const pad = 14;
+  const redH = 32;
   const qrSize = W - pad * 2;
-  const nameY = redH + 26;
-  const amountY = nameY + 30;
-  const dashY = amountY + 14;
-  const qrY = dashY + 10;
+  const nameY = redH + 21;
+  const amountY = nameY + 25;
+  const dashY = amountY + 12;
+  const qrY = dashY + 8;
   const H = qrY + qrSize + pad - 4;
 
   const canvas = createCanvas(W * scale, H * scale);
@@ -193,23 +202,23 @@ export async function renderKhqrCard(payload, { merchantName = "", scale = 3 } =
   g.closePath();
   g.fill();
   g.fillStyle = "#FFFFFF";
-  g.font = "800 15px Inter";
-  spaced(g, "KHQR", W / 2, redH / 2 + 5.5, 3, "center");
+  g.font = "800 13px Inter";
+  spaced(g, "KHQR", W / 2, redH / 2 + 4.5, 2.4, "center");
 
   g.textAlign = "left";
   g.fillStyle = C.ink;
-  g.font = "600 13px Inter, Battambang";
+  g.font = "600 11px Inter, Battambang";
   g.fillText(ellipsize(g, merchantName || facts.name, W - pad * 2), pad, nameY);
-  g.font = "800 24px Inter";
+  g.font = "800 20px Inter";
   g.fillText(facts.value, pad, amountY);
   const valueW = g.measureText(facts.value).width;
   g.fillStyle = C.muted;
-  g.font = "600 12px Inter";
-  g.fillText(facts.currency, pad + valueW + 5, amountY);
+  g.font = "600 10.5px Inter";
+  g.fillText(facts.currency, pad + valueW + 4, amountY);
 
   dashedLine(g, pad, W - pad, dashY, C.dash, 4, 3);
 
-  drawQr(g, payload, pad, qrY, qrSize);
+  drawQr(g, payload, pad, qrY, qrSize, scale);
   await drawCentreMark(g, pad + qrSize / 2, qrY + qrSize / 2, qrSize);
 
   return canvas.toBuffer("image/png");

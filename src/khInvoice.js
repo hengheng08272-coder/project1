@@ -450,7 +450,7 @@ export async function showHome(chatId, user) {
 
   if (!s.linked) {
     const keyboard = [];
-    const start = openButton(t, t.start);
+    const start = openButton(t, t.start, undefined, "rocket");
     if (start) keyboard.push([start]);
     keyboard.push([{ text: t.buy, emoji: "inv_pro", callback_data: "inv:plans" }]);
     return call("sendMessage", { chat_id: chatId, text: t.notLinked, reply_markup: { inline_keyboard: keyboard } });
@@ -526,10 +526,12 @@ export async function showPlans(chatId, user) {
     chat_id: chatId,
     text: t.plans,
     reply_markup: {
+      // Every plan is the same Pro tier, just a different length -- one
+      // crown, not the payment-app's own KHQR mark repeated on each row.
       inline_keyboard: list.map((pkg) => [
         {
           text: `${user.language === "en" ? pkg.title_en : pkg.title_km} — $${Number(pkg.price_usd).toFixed(2)}`,
-          emoji: "khqr",
+          emoji: "inv_pro",
           callback_data: `bot:buy:${pkg.id}`,
         },
       ]),
