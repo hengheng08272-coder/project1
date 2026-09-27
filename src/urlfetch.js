@@ -300,15 +300,26 @@ export function isPrivateAddress(address) {
  * (the list's own title) plus an episode number or a slugged label -- so the
  * key and the public URL say on their own which show and which episode it
  * is, and re-saving the same item overwrites it instead of piling up copies.
+ *
+ * An item with neither (every link sent to the bot, say) gets its own id
+ * appended: without it they all shared one key -- "bot-downloads/video.mp4"
+ * -- so each download overwrote the last, and Telegram, which caches a
+ * sendVideo URL, kept handing everyone the first video it ever fetched.
  */
 function buildListItemKey(showTitle, item, fileName) {
   const dir = r2.slugPath(showTitle) || "urls";
   const dot = fileName.lastIndexOf(".");
   const ext = (dot > 0 ? fileName.slice(dot + 1) : "").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
   const hasEp = item.episode_number !== null && item.episode_number !== undefined;
-  const namePart = hasEp
-    ? `EP${String(item.episode_number).padStart(3, "0")}`
-    : r2.slugPath(item.label || (dot > 0 ? fileName.slice(0, dot) : fileName)) || "video";
+  let namePart;
+  if (hasEp) {
+    namePart = `EP${String(item.episode_number).padStart(3, "0")}`;
+  } else if (item.label && r2.slugPath(item.label)) {
+    namePart = r2.slugPath(item.label);
+  } else {
+    const base = r2.slugPath(dot > 0 ? fileName.slice(0, dot) : fileName) || "video";
+    namePart = `${base}-${String(item.id).replace(/-/g, "").slice(0, 12)}`;
+  }
   return `${dir}/${namePart}.${ext}`;
 }
 
