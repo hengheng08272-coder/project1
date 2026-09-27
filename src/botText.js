@@ -212,6 +212,9 @@ const TEXT = {
       `💡 YouTube · FB · IG · TikTok នៅតែ ឥតគិតថ្លៃ មិនកំណត់ ♾`,
     doneWithLink: (name, url) => `{:ok:} រួចរាល់៖ ${name}\n\n{:link:} ${url}`,
     doneNoLink: (name) => `{:ok:} រួចរាល់៖ ${name}`,
+    creditUsed: (left, total) =>
+      `{:credit:} ប្រើ 1 Credit · នៅសល់ ${left} / ${total}` +
+      (left === 0 ? `\n⛔ Credit អស់ហើយ — ចុច 💲 បន្ថែម Credit ដើម្បីបន្ត` : ""),
     failed: (reason) => `{:fail:} ទាញយកមិនបាន៖ ${reason}`,
     tooBig: (mb) => `ឯកសារនេះ ${mb}MB ធំជាងកំណត់ 50MB របស់ Telegram សម្រាប់ bot — ខ្ញុំផ្ញើជាតំណជំនួស។`,
     noMedia: "សាររបស់តំណនោះគ្មានវីដេអូ ឬសំឡេងទេ។",
@@ -314,6 +317,9 @@ const TEXT = {
       `💡 YouTube · FB · IG · TikTok stay free and unlimited ♾`,
     doneWithLink: (name, url) => `{:ok:} Done: ${name}\n\n{:link:} ${url}`,
     doneNoLink: (name) => `{:ok:} Done: ${name}`,
+    creditUsed: (left, total) =>
+      `{:credit:} 1 Credit used · ${left} / ${total} left` +
+      (left === 0 ? `\n⛔ Out of Credit — tap 💲 Add Credit to continue` : ""),
     failed: (reason) => `{:fail:} Download failed: ${reason}`,
     tooBig: (mb) => `That file is ${mb}MB, over Telegram's 50MB bot upload limit — here's a link instead.`,
     noMedia: "That message has no video or audio in it.",

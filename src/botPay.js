@@ -20,6 +20,7 @@ import { config } from "./config.js";
 import { db, nowIso, rows } from "./db.js";
 import { paymentSettings, savePaymentSettings } from "./botConfig.js";
 import { buildPack, decorate, refusedEmoji } from "./customEmoji.js";
+import { progressBar } from "./botText.js";
 import { applyKhqrTemplate, khqrMd5, parseKhqr, validateKhqrTemplate } from "./khqr.js";
 import { renderKhqrCard } from "./khqrCard.js";
 import * as khInvoice from "./khInvoice.js";
@@ -36,39 +37,53 @@ export function isAdminChat(chatId) {
 
 const L = {
   km: {
-    choose: "{:m_buy:} ជ្រើសរើសកញ្ចប់៖",
-    freeLine: (left) => `🆓 ឥតគិតថ្លៃនៅសល់៖ ${left} ដង`,
-    premiumLine: (until) => `👑 VIP រហូតដល់ ${until}`,
+    creditScreen: (standing) =>
+      `{:credit:} Credit របស់អ្នក\n${standing}\n\n` +
+      `📌 1 Credit = ទាញវីដេអូ Telegram ឯកជន 1\n` +
+      `♾ YouTube · FB · IG · TikTok — ឥតគិតថ្លៃ មិនប្រើ Credit\n\n` +
+      `{:m_buy:} ជ្រើសរើសកញ្ចប់៖`,
+    creditLine: (bar, left, total) => `${bar}  នៅសល់ ${left} / ${total} Credit`,
+    premiumLine: (until) => `👑 VIP មិនកំណត់ — រហូតដល់ ${until}`,
+    creditPack: (n) => `+${n} Credit`,
+    vipPack: (days) => `VIP ${days} ថ្ងៃ · មិនកំណត់`,
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
     chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
-      `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
-      `📷 ស្កេនដោយ {:aba:} ABA · {:wing:} Wing · {:truemoney:} TrueMoney · {:bakong:} Bakong ឬ App ធនាគារ KHQR ណាក៏បាន\n` +
-      `💡 នៅលើទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
+      `💳 ${pkg} — $${amount}\n🎫 ${ticket} · ⏳ ៦០ នាទី\n\n` +
+      `📷 ស្កេនដោយ {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney ឬ App KHQR ណាក៏បាន\n` +
+      `💡 ទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
       `✅ បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
     cancel: "❌ បោះបង់",
     cancelled: "បានបោះបង់ការបញ្ជាទិញ។",
     screenshotReceived: "✅ ទទួលបាន screenshot។ កំពុងរង់ចាំការបញ្ជាក់ — ជាធម្មតាតិចជាងពីរបីនាទី។",
     noPendingOrder: "មិនមានការបញ្ជាទិញកំពុងរង់ចាំទេ។ ចុច 💎 ទិញ ដើម្បីចាប់ផ្ដើម។",
-    granted: (pkg) => `🎉 ការទូទាត់បានបញ្ជាក់! បានបន្ថែម៖ ${pkg}។ អរគុណ!`,
+    grantedCredit: (n, left) => `🎉 ការទូទាត់បានបញ្ជាក់! +${n} Credit\n{:credit:} Credit នៅសល់៖ ${left}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
+    grantedVip: (until) => `🎉 ការទូទាត់បានបញ្ជាក់!\n👑 VIP មិនកំណត់ — រហូតដល់ ${until}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
     rejected: "❌ ការទូទាត់មិនត្រូវបានបញ្ជាក់ទេ។ បើអ្នកបានបង់ពិតប្រាកដ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
   },
   en: {
-    choose: "{:m_buy:} Choose a package:",
-    freeLine: (left) => `🆓 Free downloads left: ${left}`,
-    premiumLine: (until) => `👑 VIP until ${until}`,
+    creditScreen: (standing) =>
+      `{:credit:} Your Credit\n${standing}\n\n` +
+      `📌 1 Credit = 1 private Telegram video\n` +
+      `♾ YouTube · FB · IG · TikTok — free, no Credit used\n\n` +
+      `{:m_buy:} Choose a package:`,
+    creditLine: (bar, left, total) => `${bar}  ${left} / ${total} Credit left`,
+    premiumLine: (until) => `👑 VIP unlimited — until ${until}`,
+    creditPack: (n) => `+${n} Credit`,
+    vipPack: (days) => `VIP ${days} days · unlimited`,
     notReady: "Payments aren't set up yet. Please contact the operator.",
     chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
-      `💳 ${pkg} — $${amount}\n🎫 ${ticket}\n\n` +
-      `📷 Scan with {:aba:} ABA · {:wing:} Wing · {:truemoney:} TrueMoney · {:bakong:} Bakong or any KHQR bank app\n` +
+      `💳 ${pkg} — $${amount}\n🎫 ${ticket} · ⏳ 60 min\n\n` +
+      `📷 Scan with {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney or any KHQR app\n` +
       `💡 Same phone: long-press the picture → save → open it in your bank app\n` +
       `✅ Paid? Send the receipt screenshot here`,
     cancel: "❌ Cancel",
     cancelled: "Order cancelled.",
     screenshotReceived: "✅ Screenshot received. Waiting for confirmation — usually a few minutes.",
     noPendingOrder: "You have no pending order. Tap 💎 Buy to start.",
-    granted: (pkg) => `🎉 Payment confirmed! Added: ${pkg}. Thank you!`,
+    grantedCredit: (n, left) => `🎉 Payment confirmed! +${n} Credit\n{:credit:} Credit left: ${left}\n\nThank you! Send a Telegram link any time.`,
+    grantedVip: (until) => `🎉 Payment confirmed!\n👑 VIP unlimited — until ${until}\n\nThank you! Send a Telegram link any time.`,
     rejected: "❌ The payment couldn't be confirmed. If you really paid, please contact the operator.",
   },
 };
@@ -139,19 +154,39 @@ function packageTitle(pkg, language) {
   return language === "en" ? pkg.title_en : pkg.title_km;
 }
 
+/**
+ * What a SaveIt pack gives, worded from its own numbers ("+30 Credit",
+ * "VIP 30 days · unlimited") so a button can never disagree with what is
+ * granted. KH Invoice plans keep their own titles.
+ */
+function packageLabel(pkg, language) {
+  if (khInvoice.isInvoicePackage(pkg.id)) return packageTitle(pkg, language);
+  const s = t(language);
+  return pkg.downloads ? s.creditPack(pkg.downloads) : s.vipPack(pkg.days);
+}
+
 // ----------------------------------------------------------------- flows
 
-/** "💎 Buy": the user's standing, then one button per package. */
-export async function showPackages(chatId, user, freeLeft) {
+/**
+ * "💲 Add Credit": the balance (or VIP), what one Credit buys, then one
+ * button per package -- a Credit pack with the Credit icon, VIP with the crown.
+ */
+export async function showPackages(chatId, user, quota) {
   const s = t(user.language);
   const list = await packages();
-  const standing = isPremium(user) ? s.premiumLine(formatDate(user.premium_until)) : s.freeLine(freeLeft);
+  const standing = isPremium(user)
+    ? s.premiumLine(formatDate(user.premium_until))
+    : s.creditLine(progressBar(quota.left, quota.total), quota.left, quota.total);
   await call("sendMessage", {
     chat_id: chatId,
-    text: `${standing}\n\n${s.choose}`,
+    text: s.creditScreen(standing),
     reply_markup: {
       inline_keyboard: list.map((pkg) => [
-        { text: `${packageTitle(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`, emoji: "khqr", callback_data: `bot:buy:${pkg.id}` },
+        {
+          text: `${pkg.downloads ? "💲" : "👑"} ${packageLabel(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`,
+          emoji: pkg.downloads ? "credit" : "m_pro",
+          callback_data: `bot:buy:${pkg.id}`,
+        },
       ]),
     },
   });
@@ -185,7 +220,7 @@ async function startOrder(chatId, user, packageId, bank = null) {
   if (!bank && primary && alt) {
     await call("sendMessage", {
       chat_id: chatId,
-      text: s.chooseBank(packageTitle(pkg, user.language), amount.toFixed(2)),
+      text: s.chooseBank(packageLabel(pkg, user.language), amount.toFixed(2)),
       reply_markup: {
         inline_keyboard: [[
           { text: `🏦 ${extra.primary_label}`, emoji: "aba", callback_data: `bot:bank:${pkg.id}~p` },
@@ -231,16 +266,10 @@ async function startOrder(chatId, user, packageId, bank = null) {
       .select("*")
   );
 
-  const title = packageTitle(pkg, user.language);
-  const png = await renderKhqrCard(built.payload, {
-    title: khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice" : "SaveIt KH",
-    merchantName: serviceName(pkg),
-    subtitle: `${title} · $${amount.toFixed(2)}`,
-    ticket,
-  });
+  const png = await renderKhqrCard(built.payload, { merchantName: serviceName(pkg) });
   const keyboard = [[{ text: s.cancel, callback_data: `bot:cancel:${order.id}` }]];
 
-  await sendPhotoBuffer(chatId, png, s.qrCaption(packageTitle(pkg, user.language), amount.toFixed(2), ticket), {
+  await sendPhotoBuffer(chatId, png, s.qrCaption(packageLabel(pkg, user.language), amount.toFixed(2), ticket), {
     inline_keyboard: keyboard,
   });
 }
@@ -294,10 +323,20 @@ async function grant(order, confirmedBy, bankHash = null) {
   }
   await db().from("bot_users").update(patch).eq("telegram_user_id", user.telegram_user_id);
 
-  await call("sendMessage", {
-    chat_id: order.chat_id,
-    text: t(user.language).granted(packageTitle(pkg, user.language)),
-  });
+  // Says what the payment bought in the same terms as the Credit screen:
+  // the new balance, or the date VIP now runs to.
+  const s = t(user.language);
+  let text;
+  if (pkg.downloads) {
+    const [usage] = rows(
+      await db().from("bot_link_downloads").select("free_used").eq("telegram_user_id", user.telegram_user_id).limit(1)
+    );
+    const total = config.botFreeDownloads + (user.bonus_downloads ?? 0) + patch.paid_downloads;
+    text = s.grantedCredit(pkg.downloads, Math.max(total - (usage?.free_used ?? 0), 0));
+  } else {
+    text = s.grantedVip(formatDate(patch.premium_until));
+  }
+  await call("sendMessage", { chat_id: order.chat_id, text });
   return true;
 }
 

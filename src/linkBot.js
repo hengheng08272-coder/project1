@@ -153,6 +153,16 @@ async function incrementUsage(telegramUserId, existing) {
 }
 
 /**
+ * Counts one Telegram download against this person's Credit and tells them
+ * what is left, so a balance never runs out unannounced. VIP is not counted.
+ */
+async function chargeCredit(chatId, user, quota) {
+  if (quota.premium) return;
+  await incrementUsage(user.telegram_user_id, quota.usage);
+  await send(chatId, texts(user.language).creditUsed(Math.max(quota.left - 1, 0), quota.total));
+}
+
+/**
  * What this person may still download from TELEGRAM -- the only thing that
  * is counted. YouTube, Facebook, TikTok and the rest are free and unlimited,
  * because they cost nothing but bandwidth; a Telegram link runs through the
@@ -188,7 +198,7 @@ async function showAccount(chatId, user) {
     `├ ${t.fieldLanguage}: ${user.language === "en" ? "English" : "ភាសាខ្មែរ"}`,
     `├ ${t.fieldPlan}: ${quota.premium ? t.planVip(new Date(user.premium_until).toISOString().slice(0, 10)) : t.planFree}`,
     `├ 🆓 YT · FB · IG · TikTok: ♾ ${t.unlimited}`,
-    `└ 👑 Telegram: ${quota.premium ? `♾ ${t.unlimited}` : `${progressBar(quota.used, quota.total)} ${quota.left} / ${quota.total}`}`,
+    `└ {:credit:} Credit (Telegram): ${quota.premium ? `♾ ${t.unlimited}` : `${progressBar(quota.left, quota.total)} ${quota.left} / ${quota.total}`}`,
   ];
   // History, language and help live here rather than on the main keyboard.
   await send(chatId, lines.join("\n"), {
@@ -304,7 +314,7 @@ export async function handleMessage(message) {
       return send(chatId, await proScreen(user, t));
     case "buy": {
       const quota = await quotaFor(user);
-      return botPay.showPackages(chatId, user, quota.left);
+      return botPay.showPackages(chatId, user, quota);
     }
     case "app":
       return send(chatId, config.webAppUrl ? t.openApp(config.webAppUrl) : t.openAppMissing);
@@ -615,7 +625,7 @@ async function sendTelegramPost(chatId, user, url, quota) {
     messageId: parsed.messageId,
   });
   if (delivered.ok) {
-    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
+    await chargeCredit(chatId, user, quota);
     return;
   }
   if (delivered.reason === "bot-not-in-storage" && isAdminChat(chatId)) {
@@ -648,12 +658,12 @@ async function sendTelegramPost(chatId, user, url, quota) {
       const link = await r2.upload(localPath, key, info.mimeType);
       const mb = Math.round(size / (1024 * 1024));
       await send(chatId, `${t.tooBig(mb)}\n\n${t.doneWithLink(info.fileName, link)}`);
-      if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
+      await chargeCredit(chatId, user, quota);
       return;
     }
 
     await sendFile(chatId, info.mediaType === "audio" ? "sendAudio" : "sendVideo", localPath);
-    if (!quota.premium) await incrementUsage(user.telegram_user_id, quota.usage);
+    await chargeCredit(chatId, user, quota);
   } catch (err) {
     console.error("Bot link download failed:", err?.message ?? err);
     await send(chatId, t.failed(String(err?.message ?? err).slice(0, 200)));

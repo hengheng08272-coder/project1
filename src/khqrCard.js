@@ -1,9 +1,7 @@
 /**
- * The payment ticket the bot sends as a photo, modelled on the telegrambot-
- * app's pay screen: a dark "pass" with a blue band (what is being bought and
- * the ticket number), and inside it the familiar white KHQR card -- red
- * band, payee, amount, QR with the Bakong mark in the middle -- then the
- * banks that can scan it.
+ * The KHQR card the bot sends as a photo: the familiar white card -- red
+ * band, payee, amount, QR with the Bakong mark in the middle -- and nothing
+ * else around it.
  *
  * Drawn with @napi-rs/canvas and fonts shipped in assets/fonts, so it needs
  * nothing from the system. The payee and amount are read from the payload
@@ -55,27 +53,11 @@ async function asset(relative) {
 }
 
 const C = {
-  page: "#0B1224",
-  panel: "#111A2E",
-  panelEdge: "#1F2B47",
-  bandFrom: "#1D3FAE",
-  bandTo: "#2563EB",
   red: "#E11B24",
   ink: "#111111",
   muted: "#8A8A8A",
-  soft: "#94A3B8",
   dash: "#DCDCDC",
 };
-
-function roundRect(g, x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
-}
 
 /** Text with letter spacing, drawn a glyph at a time (canvas spacing support varies). */
 function spaced(g, text, x, y, spacing, align = "left") {
@@ -167,164 +149,68 @@ async function drawCentreMark(g, cx, cy, qrSize) {
 }
 
 /**
- * Renders the ticket as a PNG buffer.
- *   title    -- the band's left label, e.g. "SAVEIT PRO"
- *   subtitle -- what is being bought, e.g. "VIP 30 ថ្ងៃ"
- *   ticket   -- the order's ticket number, top right
+ * Renders the KHQR card alone as a PNG buffer -- the white card every
+ * Cambodian bank app shows: red KHQR band, payee, amount, then the QR with
+ * the Bakong mark in the middle. Nothing around it, so in the chat it is a
+ * small, familiar card rather than a tall poster; what is being bought and
+ * the ticket number go in the caption instead.
  *   merchantName -- the name printed on the card, e.g. the service being
  *     paid for. Display only: the payload keeps the account's real name,
  *     because ABA refuses a KHQR whose name was rewritten.
- * Drawn at 2x a 320-point layout: small in the chat, sharp when opened.
+ * Drawn at 3x a 240-point layout: compact in the chat, sharp when opened
+ * and easy for another phone's camera to read off the screen.
  */
-export async function renderKhqrCard(
-  payload,
-  { title = "SAVEIT KH", subtitle = "", ticket = "", merchantName = "", scale = 2 } = {}
-) {
+export async function renderKhqrCard(payload, { merchantName = "", scale = 3 } = {}) {
   registerFonts();
   const facts = payloadFacts(payload);
-  // The ticket fonts have no emoji; package titles often start with one.
-  const plain = (text) => String(text).replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
-  title = plain(title);
-  subtitle = plain(subtitle);
 
-  const W = 320;
-  const pad = 14;
-  const bandH = 40;
-  const cardW = 200;
-  const cardPad = 12;
-  const redH = 28;
-  const qrSize = cardW - cardPad * 2;
-  const cardH = redH + 8 + 16 + 26 + 10 + qrSize + cardPad;
-  const headTop = pad + bandH;
-  const perfY = headTop + 58;
-  const cardY = perfY + 16;
-  const banksY = cardY + cardH + 16;
-  const H = banksY + 26 + 30 + pad;
+  const W = 240;
+  const pad = 18;
+  const redH = 40;
+  const qrSize = W - pad * 2;
+  const nameY = redH + 26;
+  const amountY = nameY + 30;
+  const dashY = amountY + 14;
+  const qrY = dashY + 10;
+  const H = qrY + qrSize + pad - 4;
 
   const canvas = createCanvas(W * scale, H * scale);
   const g = canvas.getContext("2d");
   g.scale(scale, scale);
   g.textBaseline = "alphabetic";
 
-  // Page and pass.
-  g.fillStyle = C.page;
+  g.fillStyle = "#FFFFFF";
   g.fillRect(0, 0, W, H);
-  roundRect(g, pad - 6, pad - 6, W - (pad - 6) * 2, H - (pad - 6) * 2, 20);
-  g.fillStyle = C.panel;
-  g.fill();
-  g.strokeStyle = C.panelEdge;
-  g.lineWidth = 1;
-  g.stroke();
 
-  // Blue band, rounded only on top.
-  g.save();
-  roundRect(g, pad - 6, pad - 6, W - (pad - 6) * 2, H - (pad - 6) * 2, 20);
-  g.clip();
-  const band = g.createLinearGradient(0, 0, W, 0);
-  band.addColorStop(0, C.bandFrom);
-  band.addColorStop(1, C.bandTo);
-  g.fillStyle = band;
-  g.fillRect(0, 0, W, headTop);
-  g.restore();
-  g.fillStyle = "#FFFFFF";
-  g.font = "800 14px Inter";
-  spaced(g, title.toUpperCase(), pad + 6, pad + 20, 2.2);
-  if (ticket) {
-    g.font = "600 11px Inter";
-    g.fillStyle = "#C7D2FE";
-    spaced(g, ticket, W - pad - 6, pad + 20, 0.8, "right");
-  }
-
-  // "Scan to pay" + what it is for.
-  g.textAlign = "center";
-  g.fillStyle = "#FFFFFF";
-  g.font = "700 16px Battambang";
-  g.fillText("ស្កេនដើម្បីទូទាត់", W / 2, headTop + 26);
-  if (subtitle) {
-    g.fillStyle = C.soft;
-    g.font = "400 12px Battambang, Inter";
-    g.fillText(ellipsize(g, subtitle, W - pad * 4), W / 2, headTop + 46);
-  }
-
-  // Perforation: dashed rule with a notch cut into each edge.
-  dashedLine(g, pad + 4, W - pad - 4, perfY, "#2B3A5E", 6, 5);
-  g.fillStyle = C.page;
-  for (const x of [pad - 6, W - pad + 6]) {
-    g.beginPath();
-    g.arc(x, perfY, 7, 0, Math.PI * 2);
-    g.fill();
-  }
-
-  // The KHQR card.
-  const cx = (W - cardW) / 2;
-  g.save();
-  g.shadowColor = "rgba(0,0,0,0.45)";
-  g.shadowBlur = 18;
-  g.shadowOffsetY = 6;
-  roundRect(g, cx, cardY, cardW, cardH, 14);
-  g.fillStyle = "#FFFFFF";
-  g.fill();
-  g.restore();
-
-  // Red band with the ticket's clipped bottom-right corner.
-  g.save();
-  roundRect(g, cx, cardY, cardW, cardH, 14);
-  g.clip();
+  // Red band with the KHQR card's clipped bottom-right corner.
   g.fillStyle = C.red;
   g.beginPath();
-  g.moveTo(cx, cardY);
-  g.lineTo(cx + cardW, cardY);
-  g.lineTo(cx + cardW, cardY + redH * 0.55);
-  g.lineTo(cx + cardW * 0.86, cardY + redH);
-  g.lineTo(cx, cardY + redH);
+  g.moveTo(0, 0);
+  g.lineTo(W, 0);
+  g.lineTo(W, redH * 0.55);
+  g.lineTo(W * 0.86, redH);
+  g.lineTo(0, redH);
   g.closePath();
   g.fill();
-  g.restore();
   g.fillStyle = "#FFFFFF";
-  g.font = "800 12px Inter";
-  spaced(g, "KHQR", W / 2, cardY + 19, 2.4, "center");
+  g.font = "800 15px Inter";
+  spaced(g, "KHQR", W / 2, redH / 2 + 5.5, 3, "center");
 
   g.textAlign = "left";
   g.fillStyle = C.ink;
-  g.font = "600 11px Inter, Battambang";
-  g.fillText(ellipsize(g, merchantName || facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 8 + 11);
-  g.font = "800 19px Inter";
-  const amountY = cardY + redH + 8 + 16 + 20;
-  g.fillText(facts.value, cx + cardPad, amountY);
+  g.font = "600 13px Inter, Battambang";
+  g.fillText(ellipsize(g, merchantName || facts.name, W - pad * 2), pad, nameY);
+  g.font = "800 24px Inter";
+  g.fillText(facts.value, pad, amountY);
   const valueW = g.measureText(facts.value).width;
   g.fillStyle = C.muted;
-  g.font = "600 10.5px Inter";
-  g.fillText(facts.currency, cx + cardPad + valueW + 4, amountY);
+  g.font = "600 12px Inter";
+  g.fillText(facts.currency, pad + valueW + 5, amountY);
 
-  const dashY = cardY + redH + 8 + 16 + 26 + 4;
-  dashedLine(g, cx + cardPad, cx + cardW - cardPad, dashY, C.dash, 4, 3);
+  dashedLine(g, pad, W - pad, dashY, C.dash, 4, 3);
 
-  const qrY = dashY + 6;
-  drawQr(g, payload, cx + cardPad, qrY, qrSize);
-  await drawCentreMark(g, cx + cardPad + qrSize / 2, qrY + qrSize / 2, qrSize);
-
-  // Banks that can scan it.
-  g.textAlign = "center";
-  g.fillStyle = C.soft;
-  g.font = "400 11px Battambang";
-  g.fillText("ស្កេនបានគ្រប់ App ធនាគារដែលប្រើ KHQR", W / 2, banksY + 4);
-  const icon = 22;
-  const gap = 7;
-  const marks = await Promise.all([1, 2, 3, 4, 5].map((i) => asset(`banks/bank-${i}.png`)));
-  const shown = marks.filter(Boolean);
-  let ix = W / 2 - (shown.length * icon + (shown.length - 1) * gap) / 2;
-  for (const mark of shown) {
-    g.save();
-    roundRect(g, ix, banksY + 14, icon, icon, 6);
-    g.clip();
-    g.drawImage(mark, ix, banksY + 14, icon, icon);
-    g.restore();
-    ix += icon + gap;
-  }
-
-  g.fillStyle = "#64748B";
-  g.font = "400 10.5px Battambang";
-  g.fillText("QR មានសុពលភាព ៦០ នាទី", W / 2, banksY + 14 + icon + 20);
+  drawQr(g, payload, pad, qrY, qrSize);
+  await drawCentreMark(g, pad + qrSize / 2, qrY + qrSize / 2, qrSize);
 
   return canvas.toBuffer("image/png");
 }
