@@ -51,7 +51,7 @@ const L = {
     chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
       `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} ៦០ នាទី\n\n` +
-      `{:camera:} ស្កេនដោយ {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney ឬ App KHQR ណាក៏បាន\n` +
+      `{:camera:} ស្កេនដោយ App ធនាគារណាមួយដែលមាន KHQR (ABA, ACLEDA, Wing, Bakong…)\n` +
       `{:bulb:} ទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
       `{:ok:} បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
     cancel: "❌ បោះបង់",
@@ -76,7 +76,7 @@ const L = {
     chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
       `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} 60 min\n\n` +
-      `{:camera:} Scan with {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney or any KHQR app\n` +
+      `{:camera:} Scan with any KHQR bank app (ABA, ACLEDA, Wing, Bakong…)\n` +
       `{:bulb:} Same phone: long-press the picture → save → open it in your bank app\n` +
       `{:ok:} Paid? Send the receipt screenshot here`,
     cancel: "❌ Cancel",
@@ -197,9 +197,10 @@ function newTicket() {
   return `KH${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 36 ** 2).toString(36).toUpperCase().padStart(2, "0")}`;
 }
 
-/** The name printed on (and, for a bank that allows it, written into) the QR. */
-const serviceName = (pkg) =>
-  khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : watch.isWatchPackage(pkg.id) ? "SaveIt Watch" : "SaveIt Pro";
+/** The name printed on (and, for a bank that allows it, written into) the QR --
+ * one name for every product, so the payer's bank app always shows the same
+ * merchant regardless of what they're buying. */
+const serviceName = () => "SaveIt KH";
 
 /**
  * A package was tapped: build its QR and send it. With two banks set up the
@@ -236,7 +237,7 @@ async function startOrder(chatId, user, packageId, bank = null) {
   const useAlt = (bank === "a" && Boolean(alt)) || !primary;
   const template = useAlt ? alt : primary;
   const built = applyKhqrTemplate(template, amount, {
-    merchantName: useAlt && extra.rename_alt ? serviceName(pkg) : null,
+    merchantName: useAlt && extra.rename_alt ? serviceName() : null,
   });
   if (!built.ok) {
     console.error("Bot KHQR build failed:", built.reason);
@@ -268,7 +269,7 @@ async function startOrder(chatId, user, packageId, bank = null) {
       .select("*")
   );
 
-  const png = await renderKhqrCard(built.payload, { merchantName: serviceName(pkg) });
+  const png = await renderKhqrCard(built.payload, { merchantName: serviceName() });
   const keyboard = [[{ text: s.cancel, emoji: "fail", callback_data: `bot:cancel:${order.id}` }]];
 
   await sendPhotoBuffer(chatId, png, s.qrCaption(packageLabel(pkg, user.language), amount.toFixed(2), ticket), {
