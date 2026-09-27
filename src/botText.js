@@ -113,8 +113,8 @@ export function mainKeyboard(language) {
 export function languageKeyboard() {
   return {
     inline_keyboard: [[
-      { text: "🇰🇭 ភាសាខ្មែរ", callback_data: "bot:lang:km" },
-      { text: "🇬🇧 English", callback_data: "bot:lang:en" },
+      { text: "🇰🇭 ភាសាខ្មែរ", emoji: "m_language", callback_data: "bot:lang:km" },
+      { text: "🇬🇧 English", emoji: "m_language", callback_data: "bot:lang:en" },
     ]],
   };
 }

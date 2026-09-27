@@ -183,12 +183,18 @@ function glint(g, x, y, r, colour = "#FFFFFF") {
  * twinkles at a corner, and the layer gets a soft shadow so it reads on
  * light and dark chat backgrounds alike.
  */
+// How much bigger the glyph is drawn than it was designed at -- fills more
+// of the 100x100 tile so it stays legible once Telegram renders it small.
+const ICON_ZOOM = 1.16;
 function frame(draw, { sweep = true, glints = true } = {}, t) {
   const layer = createCanvas(S, S);
   const g = layer.getContext("2d");
   g.lineCap = "round";
   g.lineJoin = "round";
   g.save();
+  g.translate(50, 50);
+  g.scale(ICON_ZOOM, ICON_ZOOM);
+  g.translate(-50, -50);
   draw(g, t);
   g.restore();
   if (sweep) {
@@ -250,8 +256,11 @@ async function supplied(name, file) {
   fs.writeFileSync(path.join(OUT, `${name}.png`), c.toBuffer("image/png"));
 }
 
+// Icons read small in a chat -- thicken every stroke a bit past what looks
+// right at full size, so the shape still reads once Telegram shrinks it.
+const STROKE = 1.22;
 const line = (g, w, style) => {
-  g.lineWidth = w;
+  g.lineWidth = w * STROKE;
   g.strokeStyle = style;
 };
 const path2 = (g, pts) => {

@@ -590,7 +590,7 @@ export async function handleStart(chatId, user, payload) {
     await call("sendMessage", {
       chat_id: chatId,
       text: t.loginAsk,
-      reply_markup: { inline_keyboard: [[{ text: t.loginYes, callback_data: `inv:ok:${login[1]}` }, { text: t.no, callback_data: "inv:no" }]] },
+      reply_markup: { inline_keyboard: [[{ text: t.loginYes, emoji: "ok", callback_data: `inv:ok:${login[1]}` }, { text: t.no, emoji: "fail", callback_data: "inv:no" }]] },
     });
     return true;
   }
@@ -599,7 +599,7 @@ export async function handleStart(chatId, user, payload) {
     await call("sendMessage", {
       chat_id: chatId,
       text: t.linkAsk(""),
-      reply_markup: { inline_keyboard: [[{ text: t.linkYes, callback_data: `inv:ok:${link[1]}` }, { text: t.no, callback_data: "inv:no" }]] },
+      reply_markup: { inline_keyboard: [[{ text: t.linkYes, emoji: "ok", callback_data: `inv:ok:${link[1]}` }, { text: t.no, emoji: "fail", callback_data: "inv:no" }]] },
     });
     return true;
   }
