@@ -48,8 +48,8 @@ export const isWatchPackage = (id) => String(id ?? "").startsWith(WATCH_PACKAGE_
 export const KINDS = ["anime", "donghua", "movie"];
 const KIND_LABEL = {
   anime: { km: "🎌 Anime", en: "🎌 Anime" },
-  donghua: { km: "🐉 Donghua", en: "🐉 Donghua" },
-  movie: { km: "🎬 Movie", en: "🎬 Movie" },
+  donghua: { km: "🐉 Donghua និយាយខ្មែរ", en: "🐉 Donghua (Khmer dub)" },
+  movie: { km: "🎬 ភាពយន្តនិយាយខ្មែរ", en: "🎬 Movies (Khmer dub)" },
 };
 
 const DEFAULT_PRICE_USD = 0.25;
@@ -268,11 +268,18 @@ async function showEpisodeList(chatId, user, topicId, page = 0) {
 
   const pageNote =
     allEpisodes.length > EPS_PER_PAGE ? ` (${start + 1}-${Math.min(start + EPS_PER_PAGE, allEpisodes.length)}/${allEpisodes.length})` : "";
-  await call("sendMessage", {
-    chat_id: chatId,
-    text: `${t.epList(topic.title, credits)}${pageNote}\n\n${t.balance(w.credits ?? 0)}`,
-    reply_markup: { inline_keyboard: buttons },
-  });
+  const caption = `${t.epList(topic.title, credits)}${pageNote}\n\n${t.balance(w.credits ?? 0)}`;
+  if (meta.poster_file_id && page === 0) {
+    // Telegram caps a photo caption at 1024 characters (a plain message has
+    // no such limit) -- comfortably enough room for this text, but fall
+    // back to a plain message rather than silently truncate if it somehow
+    // isn't (a very long show title, say).
+    if (caption.length <= 1024) {
+      const sent = await call("sendPhoto", { chat_id: chatId, photo: meta.poster_file_id, caption, reply_markup: { inline_keyboard: buttons } });
+      if (sent?.ok) return;
+    }
+  }
+  await call("sendMessage", { chat_id: chatId, text: caption, reply_markup: { inline_keyboard: buttons } });
 }
 
 async function buyEpisode(chatId, cq, user, episodeId) {
@@ -282,6 +289,8 @@ async function buyEpisode(chatId, cq, user, episodeId) {
   );
   if (!episode) return;
   const meta = (await showMeta())[episode.topic_id] ?? {};
+  const [topic] = rows(await db().from("topics").select("title").eq("id", episode.topic_id).limit(1));
+  const epCaption = `🎬 ${topic?.title ?? ""} — EP ${episode.ep_number}`.trim();
   const credits = meta.ep_credits ?? 1;
   const w = await walletFor(user.telegram_user_id);
   const already = Boolean(w.bought?.[episodeId]);
@@ -305,12 +314,12 @@ async function buyEpisode(chatId, cq, user, episodeId) {
   if (episode.r2_key) {
     const url = await r2.urlForKey(episode.r2_key).catch(() => null);
     if (url) {
-      await call("sendMessage", { chat_id: chatId, text: `🎬 EP ${episode.ep_number}\n${url}` });
+      await call("sendMessage", { chat_id: chatId, text: `${epCaption}\n${url}` });
       delivered = { ok: true };
     }
   }
   if (!delivered.ok) {
-    delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption: `🎬 EP ${episode.ep_number}` });
+    delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption: epCaption });
   }
 
   if (!delivered.ok) {
@@ -418,16 +427,20 @@ export async function addOrScanGroup(chatId) {
  * A poster attached to the same command (photo, or forwarded from anywhere)
  * is converted into a custom emoji and stored on the show.
  */
-export async function setShow(topicId, kind, status, credits, posterBuffer) {
+export async function setShow(topicId, kind, status, credits, posterBuffer, posterFileId) {
   if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
   const patch = { kind };
   if (status) patch.status = status;
   if (credits) patch.ep_credits = Math.max(1, Math.round(Number(credits)));
   if (posterBuffer) {
     patch.poster_emoji = await customEmoji.addPosterEmoji(posterBuffer);
+    // The original photo's own file_id, reused as-is (no re-upload) to show
+    // the real poster above a show's episode list -- Telegram keeps a
+    // photo's file_id valid indefinitely once it's been sent once.
+    if (posterFileId) patch.poster_file_id = posterFileId;
   }
   const saved = await saveShowMeta(topicId, patch);
-  return `✅ Show set: kind=${saved.kind} status=${saved.status} ep_credits=${saved.ep_credits}${posterBuffer ? " (poster emoji added)" : ""}`;
+  return `✅ Show set: kind=${saved.kind} status=${saved.status} ep_credits=${saved.ep_credits}${posterBuffer ? " (poster emoji + photo added)" : ""}`;
 }
 
 /** /shows -- topic index for /setshow, across every registered group. */

@@ -272,8 +272,9 @@ export async function handleMessage(message) {
     );
     if (setShow) {
       try {
-        const buffer = await fetchTelegramPhoto(message.photo[message.photo.length - 1].file_id);
-        await send(chatId, await watch.setShow(setShow[1], setShow[2].toLowerCase(), setShow[3]?.toLowerCase(), setShow[4], buffer));
+        const fileId = message.photo[message.photo.length - 1].file_id;
+        const buffer = await fetchTelegramPhoto(fileId);
+        await send(chatId, await watch.setShow(setShow[1], setShow[2].toLowerCase(), setShow[3]?.toLowerCase(), setShow[4], buffer, fileId));
       } catch (err) {
         await send(chatId, `⚠️ ${err?.message ?? err}`);
       }
