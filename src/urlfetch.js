@@ -131,17 +131,24 @@ export async function saveItem(itemId) {
         lastProgressWriteAt = now;
         patch(itemId, { progress: pct }).catch(() => {});
       };
-      const localPath = await downloadWithYtdlp(item.url, item.referer || "", hint, onProgress, quality);
+      const downloaded = await downloadWithYtdlp(item.url, item.referer || "", hint, onProgress, quality);
       try {
-        fileName = hint;
+        // An item with its own label (an episode from a show, say) keeps it
+        // -- that label is why the item was added. Otherwise, a bot link or
+        // a Quick Add with nothing typed in, use the source's own title
+        // (the song or video's real name) when yt-dlp read one, rather than
+        // the generic "audio"/"video" everything used to share.
+        const ext = isAudioOnly ? "m4a" : "mp4";
+        const titledName = downloaded.title ? sanitizeTitleForFileName(downloaded.title) : "";
+        fileName = item.label ? hint : titledName ? `${titledName}.${ext}` : hint;
         key = buildListItemKey(showTitle, item, fileName);
-        const stat = await fs.stat(localPath);
+        const stat = await fs.stat(downloaded.path);
         const contentType = isAudioOnly ? "audio/mp4" : "video/mp4";
-        const uploadedUrl = await r2.upload(localPath, key, contentType);
+        const uploadedUrl = await r2.upload(downloaded.path, key, contentType);
         publicUrl = uploadedUrl === key ? null : uploadedUrl;
         size = stat.size;
       } finally {
-        await fs.rm(localPath, { force: true }).catch(() => {});
+        await fs.rm(downloaded.path, { force: true }).catch(() => {});
       }
     } else {
       // mode === "direct" or mode === "auto" with a direct file URL.
@@ -324,6 +331,21 @@ function buildListItemKey(showTitle, item, fileName) {
 }
 
 /** A readable file name for an item: its label, its episode number, or the URL. */
+/**
+ * A song or video's own title, safe to use as a file name: strips characters
+ * illegal in a Windows/macOS/Linux file name and collapses whitespace, but
+ * keeps everything else -- Khmer script, punctuation, mixed case -- so the
+ * file that lands on someone's phone is still recognizably the title yt-dlp
+ * read off the source, not a slug.
+ */
+function sanitizeTitleForFileName(title) {
+  return title
+    .replace(/[\x00-\x1f\x7f<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
 function fileNameFor(item, response) {
   const fromHeader = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(
     response.headers.get("content-disposition") || ""

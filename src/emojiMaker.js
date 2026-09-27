@@ -151,7 +151,7 @@ export async function handleMessage(message, user) {
       await fs.writeFile(source, await telegramFile(media.file_id));
       moving = media.moving;
     } else {
-      downloaded = await downloadWithYtdlp(url, null, "emoji.mp4", null, "small");
+      downloaded = (await downloadWithYtdlp(url, null, "emoji.mp4", null, "small")).path;
       source = downloaded;
     }
     const sticker = moving ? await toWebm(source, dir, startAt(caption || text)) : await toPng(source, dir);

@@ -33,6 +33,9 @@ const BACKOFF_SECONDS = 15;
 const STALL_TIMEOUT_MS = 120_000;
 
 const DIRECT_FILE_EXT = /\.(mp4|mkv|webm|mov|avi|flv|ts|m4v|mp3|m4a|wav|flac|aac|ogg)(\?|$)/i;
+// Marks the one stdout line that carries --print's output, so it can be told
+// apart from progress and diagnostic lines with certainty rather than a guess.
+const TITLE_MARKER = "SAVEIT_TITLE::";
 
 /**
  * True when the URL's own path already ends in a known media extension --
@@ -133,6 +136,11 @@ function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
       "--downloader-args", "ffmpeg:-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
       "--format", format,
       ...(isAudioOnly ? ["--extract-audio", "--audio-format", "m4a"] : ["--merge-output-format", "mp4"]),
+      // Prints the source's own title once its info is resolved (no extra
+      // request -- yt-dlp already fetched this to pick a format), tagged so
+      // it can be picked out of the progress/error noise on stdout. Used to
+      // give a downloaded file a real name instead of a generic one.
+      "--print", `${TITLE_MARKER}%(title)s`,
       "-o", outputPath,
       sourceUrl,
     ];
@@ -157,6 +165,7 @@ function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
     // so a real failure is diagnosable from the error column, not a dead end.
     const recentErrLines = [];
     let lastErrLine = "";
+    let capturedTitle = null;
     let settled = false;
 
     let stallTimer = setTimeout(onStall, STALL_TIMEOUT_MS);
@@ -193,7 +202,15 @@ function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
     });
     child.stdout.on("data", (chunk) => {
       bumpStallTimer();
-      trackErrLines(chunk);
+      const lines = trackErrLines(chunk);
+      for (const line of lines) {
+        if (line.startsWith(TITLE_MARKER)) {
+          const value = line.slice(TITLE_MARKER.length).trim();
+          // "NA" is yt-dlp's own placeholder for a field the extractor
+          // didn't provide -- a live stream or a bare file link, say.
+          if (value && value !== "NA") capturedTitle = value;
+        }
+      }
       if (!onProgress) return;
       const match = PROGRESS_RE.exec(chunk.toString("utf8"));
       if (match) onProgress(Math.min(99, Math.round(Number.parseFloat(match[1]))));
@@ -208,7 +225,7 @@ function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
       if (settled) return;
       settled = true;
       clearTimeout(stallTimer);
-      if (code === 0) resolve({ ok: true });
+      if (code === 0) resolve({ ok: true, title: capturedTitle });
       else {
         // Trailing lines matter more than leading ones for "why did this
         // fail" -- take the last several instead of just the very last, so
@@ -224,6 +241,11 @@ function runOnce(sourceUrl, referer, outputPath, onProgress, quality) {
  * Downloads the source to a local temp file, retrying the whole run on
  * failure. The caller uploads that file to R2 and is responsible for
  * deleting it afterward (same contract as downloader.js/linkBot.js).
+ *
+ * Resolves to { path, title }: `title` is the source's own title (a song's
+ * or a video's), when yt-dlp's extractor provided one -- null for a bare
+ * file link or a site with no metadata. The caller decides what to do with
+ * it; this never touches `path`, which stays exactly `fileNameHint`.
  */
 export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProgress, quality) {
   await fs.mkdir(config.downloadDir, { recursive: true });
@@ -237,7 +259,7 @@ export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProg
     const result = await runOnce(sourceUrl, referer, localPath, onProgress, quality);
     if (result.ok) {
       const stat = await fs.stat(localPath).catch(() => null);
-      if (stat && stat.size > 0) return localPath;
+      if (stat && stat.size > 0) return { path: localPath, title: result.title ?? null };
       lastError = "The downloaded file is empty.";
     } else {
       lastError = result.error;

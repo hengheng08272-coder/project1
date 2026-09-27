@@ -87,6 +87,12 @@ function fileNameOf(job) {
   }
 }
 
+/** `name` without its extension, for Telegram's audio player title. */
+function titleOf(name) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
 /**
  * Sends back every finished download nobody has been told about yet. Called
  * once per worker pass rather than awaited inside the webhook, since a long
@@ -98,7 +104,7 @@ export async function notifyFinishedJobs() {
   const pending = rows(
     await db()
       .from("bot_jobs")
-      .select("*, item:url_list_items(status, file_size, r2_url, error)")
+      .select("*, item:url_list_items(status, file_size, r2_url, error, quality_pref)")
       .eq("notified", false)
       .order("created_at", { ascending: true })
       .limit(20)
@@ -126,10 +132,15 @@ export async function notifyFinishedJobs() {
       });
     } else if (item.r2_url && Number(item.file_size ?? 0) <= SEND_BY_URL_LIMIT_BYTES) {
       // Small enough for Telegram to fetch the file itself, so it arrives as a
-      // playable video rather than a link the person has to open.
-      const result = await call("sendVideo", {
+      // playable video or song rather than a link the person has to open.
+      // An "…audio" request saved an .m4a, not a video container -- sendVideo
+      // on that either gets refused outright or arrives as a silent black
+      // clip, so it goes through sendAudio instead, with the title Telegram's
+      // own player shows set from the file's real name.
+      const isAudio = item.quality_pref === "audio_only";
+      const result = await call(isAudio ? "sendAudio" : "sendVideo", {
         chat_id: job.chat_id,
-        video: item.r2_url,
+        ...(isAudio ? { audio: item.r2_url, title: titleOf(name) } : { video: item.r2_url }),
         caption: t.doneNoLink(name),
       });
       if (!result?.ok) {
