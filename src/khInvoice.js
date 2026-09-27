@@ -189,9 +189,11 @@ const L = {
     kOpen: "📱 បើក KH Invoice",
     kSummary: "📋 សង្ខេបថ្ងៃនេះ",
     kShop: "🏪 ឈ្មោះហាង",
+    kStock: "📦 ស្តុកទំនិញ",
     kBack: "⬅️ ម៉ឺនុយដើម",
     backDone: "⬅️ ត្រឡប់ទៅម៉ឺនុយដើម",
     createHint: "🧾 ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកផ្ទាំងបង្កើតវិក្កយបត្រ (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    stockHint: "📦 ចុចប៊ូតុងខាងក្រោម ដើម្បីមើលស្តុកទំនិញ (ចូលដោយស្វ័យប្រវត្តិ)៖",
     openHint: "📱 ជ្រើសផ្ទាំងដែលចង់បើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
     aCreate: "🧾 បង្កើតវិក្កយបត្រ",
     aInvoices: "📂 វិក្កយបត្រទាំងអស់",
@@ -261,9 +263,11 @@ const L = {
     kOpen: "📱 Open KH Invoice",
     kSummary: "📋 Today's summary",
     kShop: "🏪 Shop name",
+    kStock: "📦 Stock",
     kBack: "⬅️ Main menu",
     backDone: "⬅️ Back to the main menu",
     createHint: "🧾 Tap below to open the new-invoice screen (signed in automatically):",
+    stockHint: "📦 Tap below to see your stock (signed in automatically):",
     openHint: "📱 Pick a screen to open (signed in automatically):",
     aCreate: "🧾 Create invoice",
     aInvoices: "📂 All invoices",
@@ -329,11 +333,14 @@ function openButton(t, label, screen, emoji = "inv_app") {
 export function sectionKeyboard(language) {
   const t = tx(language);
   return {
+    // Create invoice stands alone on top -- the one action people reach for
+    // most -- then the day-to-day pairs, then the occasional ones, then Back.
     keyboard: [
-      [{ text: t.kCreate, emoji: "inv_create" }, { text: t.kOpen, emoji: "inv_app" }],
+      [{ text: t.kCreate, emoji: "inv_create" }],
       [{ text: t.income, emoji: "inv_in" }, { text: t.expense, emoji: "inv_out" }],
-      [{ text: t.kSummary, emoji: "inv_summary" }, { text: t.unpaid, emoji: "inv_unpaid" }],
-      [{ text: t.kShop, emoji: "inv_shop" }, { text: t.buy, emoji: "inv_pro" }],
+      [{ text: t.kStock, emoji: "inv_stock" }, { text: t.kSummary, emoji: "inv_summary" }],
+      [{ text: t.unpaid, emoji: "inv_unpaid" }, { text: t.kShop, emoji: "inv_shop" }],
+      [{ text: t.kOpen, emoji: "inv_app" }, { text: t.buy, emoji: "inv_pro" }],
       [{ text: t.kBack, emoji: "inv_back" }],
     ],
     resize_keyboard: true,
@@ -351,6 +358,7 @@ for (const lang of Object.keys(L)) {
   for (const [label, action] of [
     [t.kCreate, "create"], [t.kOpen, "open"], [t.income, "income"], [t.expense, "expense"],
     [t.kSummary, "summary"], [t.unpaid, "unpaid"], [t.kShop, "shop"], [t.buy, "buy"], [t.kBack, "back"],
+    [t.kStock, "stock"],
   ]) {
     SECTION_ACTIONS.set(label, action);
     SECTION_ACTIONS.set(bare(label), action);
@@ -380,6 +388,14 @@ async function showScreens(chatId, user, createOnly) {
     text: createOnly ? t.createHint : t.openHint,
     reply_markup: { inline_keyboard: rows },
   });
+}
+
+/** The Stock screen alone, opened straight from its own keyboard button. */
+async function showStockScreen(chatId, user) {
+  const t = tx(user.language);
+  const stock = openButton(t, t.aStock, "stock", "inv_stock");
+  if (!stock) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
+  return call("sendMessage", { chat_id: chatId, text: t.stockHint, reply_markup: { inline_keyboard: [[stock]] } });
 }
 
 /**
