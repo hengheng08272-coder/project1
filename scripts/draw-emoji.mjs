@@ -1237,21 +1237,33 @@ icon("inv_app", spin360(drawKhInvoice, { rim: "#07243F" }), { glints: true, stil
 icon("logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), { glints: true, still: 0.8 });
 
 // ------------------------------------------------------------ profile videos
-// Each logo full-bleed at 640x640, turning 360°, as an MP4 loop and a PNG,
-// for an animated profile photo (Telegram Premium). Written to assets/profile.
-function profileVideo(file, draw, background) {
+// Each logo at 640x640, turning 360°, as an MP4 loop and a PNG, for an
+// animated profile photo (Telegram Premium). Written to assets/profile.
+//
+// Telegram crops a profile photo to a circle, so the logo is shrunk by
+// `scale` until all of it sits inside that circle -- drawn full-bleed, the
+// SaveIt ring and the KH Invoice tile's corners and arrow were cut off.
+function profileVideo(file, draw, background, scale) {
   const dir = path.join(ROOT, "assets", "profile");
   fs.mkdirSync(dir, { recursive: true });
   const SIZE = 640;
   const big = (t) => {
+    // The logo goes on a clear layer first: spin360's "turned away" dimming
+    // paints over everything already there, which would darken a box of the
+    // background around the shrunken logo mid-turn.
+    const logo = createCanvas(SIZE, SIZE);
+    const lg = logo.getContext("2d");
+    lg.scale(SIZE / 100, SIZE / 100);
+    lg.translate(50 * (1 - scale), 50 * (1 - scale));
+    lg.scale(scale, scale);
+    lg.lineCap = "round";
+    lg.lineJoin = "round";
+    draw(lg, t);
     const c = createCanvas(SIZE, SIZE);
     const g = c.getContext("2d");
     g.fillStyle = background;
     g.fillRect(0, 0, SIZE, SIZE);
-    g.scale(SIZE / 100, SIZE / 100);
-    g.lineCap = "round";
-    g.lineJoin = "round";
-    draw(g, t);
+    g.drawImage(logo, 0, 0);
     return c;
   };
   fs.writeFileSync(path.join(dir, `${file}.png`), big(0.8).toBuffer("image/png"));
@@ -1269,8 +1281,10 @@ function profileVideo(file, draw, background) {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
-profileVideo("saveit-logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), "#050B18");
-profileVideo("kh-invoice-logo", spin360(drawKhInvoice, { rim: "#07243F" }), "#0B1640");
+// A round badge only needs its ring pulled in; the rounded tile's corners
+// reach ~57 from the centre, so it shrinks to fit the circle's radius of 50.
+profileVideo("saveit-logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), "#050B18", 0.9);
+profileVideo("kh-invoice-logo", spin360(drawKhInvoice, { rim: "#07243F" }), "#0B1640", 0.8);
 
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {
