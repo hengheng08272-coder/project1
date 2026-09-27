@@ -41,8 +41,8 @@ export async function notifyAdminOfSubmission(submission, tierLabel) {
     `Submission: ${submission.id}`;
   const keyboard = {
     inline_keyboard: [[
-      { text: "✅ Approve", callback_data: `pay_approve:${submission.id}` },
-      { text: "❌ Reject", callback_data: `pay_reject:${submission.id}` },
+      { text: "✅ Approve", emoji: "ok", callback_data: `pay_approve:${submission.id}` },
+      { text: "❌ Reject", emoji: "fail", callback_data: `pay_reject:${submission.id}` },
     ]],
   };
   if (submission.screenshot_url) {

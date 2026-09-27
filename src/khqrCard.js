@@ -65,6 +65,9 @@ const C = {
   muted: "#8A8A8A",
   soft: "#94A3B8",
   dash: "#DCDCDC",
+  amount: "#0E7A4E",
+  gold: "#D97706",
+  goldBg: "#FEF3C7",
 };
 
 function roundRect(g, x, y, w, h, r) {
@@ -174,11 +177,11 @@ async function drawCentreMark(g, cx, cy, qrSize) {
  *   merchantName -- the name printed on the card, e.g. the service being
  *     paid for. Display only: the payload keeps the account's real name,
  *     because ABA refuses a KHQR whose name was rewritten.
- * Drawn at 2x a 320-point layout: small in the chat, sharp when opened.
+ * Drawn at 3x a 320-point layout: small in the chat, still sharp at a full-screen pinch-zoom.
  */
 export async function renderKhqrCard(
   payload,
-  { title = "SAVEIT KH", subtitle = "", ticket = "", merchantName = "", scale = 2 } = {}
+  { title = "SAVEIT KH", subtitle = "", ticket = "", merchantName = "", scale = 3 } = {}
 ) {
   registerFonts();
   const facts = payloadFacts(payload);
@@ -190,16 +193,16 @@ export async function renderKhqrCard(
   const W = 320;
   const pad = 14;
   const bandH = 40;
-  const cardW = 200;
-  const cardPad = 12;
-  const redH = 28;
+  const cardW = 216;
+  const cardPad = 11;
+  const redH = 26;
   const qrSize = cardW - cardPad * 2;
-  const cardH = redH + 8 + 16 + 26 + 10 + qrSize + cardPad;
+  const cardH = redH + 7 + 15 + 24 + 9 + qrSize + cardPad;
   const headTop = pad + bandH;
-  const perfY = headTop + 58;
-  const cardY = perfY + 16;
-  const banksY = cardY + cardH + 16;
-  const H = banksY + 26 + 30 + pad;
+  const perfY = headTop + 50;
+  const cardY = perfY + 14;
+  const banksY = cardY + cardH + 14;
+  const H = banksY + 24 + 28 + pad;
 
   const canvas = createCanvas(W * scale, H * scale);
   const g = canvas.getContext("2d");
@@ -230,20 +233,27 @@ export async function renderKhqrCard(
   g.font = "800 14px Inter";
   spaced(g, title.toUpperCase(), pad + 6, pad + 20, 2.2);
   if (ticket) {
-    g.font = "600 11px Inter";
-    g.fillStyle = "#C7D2FE";
-    spaced(g, ticket, W - pad - 6, pad + 20, 0.8, "right");
+    g.font = "700 11px Inter";
+    const letterSpacing = 0.8;
+    const textW = [...ticket].reduce((sum, ch) => sum + g.measureText(ch).width, 0) + letterSpacing * (ticket.length - 1);
+    const chipW = textW + 16;
+    const chipX = W - pad - 6 - chipW;
+    roundRect(g, chipX, pad + 8, chipW, 17, 8.5);
+    g.fillStyle = C.goldBg;
+    g.fill();
+    g.fillStyle = C.gold;
+    spaced(g, ticket, W - pad - 6 - 8, pad + 20, letterSpacing, "right");
   }
 
   // "Scan to pay" + what it is for.
   g.textAlign = "center";
   g.fillStyle = "#FFFFFF";
   g.font = "700 16px Battambang";
-  g.fillText("ស្កេនដើម្បីទូទាត់", W / 2, headTop + 26);
+  g.fillText("ស្កេនដើម្បីទូទាត់", W / 2, headTop + 22);
   if (subtitle) {
     g.fillStyle = C.soft;
     g.font = "400 12px Battambang, Inter";
-    g.fillText(ellipsize(g, subtitle, W - pad * 4), W / 2, headTop + 46);
+    g.fillText(ellipsize(g, subtitle, W - pad * 4), W / 2, headTop + 40);
   }
 
   // Perforation: dashed rule with a notch cut into each edge.
@@ -287,16 +297,17 @@ export async function renderKhqrCard(
   g.textAlign = "left";
   g.fillStyle = C.ink;
   g.font = "600 11px Inter, Battambang";
-  g.fillText(ellipsize(g, merchantName || facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 8 + 11);
-  g.font = "800 19px Inter";
-  const amountY = cardY + redH + 8 + 16 + 20;
+  g.fillText(ellipsize(g, merchantName || facts.name, cardW - cardPad * 2), cx + cardPad, cardY + redH + 7 + 10);
+  g.fillStyle = C.amount;
+  g.font = "800 21px Inter";
+  const amountY = cardY + redH + 7 + 15 + 19;
   g.fillText(facts.value, cx + cardPad, amountY);
   const valueW = g.measureText(facts.value).width;
   g.fillStyle = C.muted;
   g.font = "600 10.5px Inter";
   g.fillText(facts.currency, cx + cardPad + valueW + 4, amountY);
 
-  const dashY = cardY + redH + 8 + 16 + 26 + 4;
+  const dashY = cardY + redH + 7 + 15 + 24 + 3;
   dashedLine(g, cx + cardPad, cx + cardW - cardPad, dashY, C.dash, 4, 3);
 
   const qrY = dashY + 6;
