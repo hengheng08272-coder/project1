@@ -14,6 +14,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { config } from "./config.js";
 import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } from "./botText.js";
@@ -34,6 +35,7 @@ import { getClientForChat, isAuthorized, listAccounts, parseTelegramLink, Telegr
 // reply, not the download.
 const BOT_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024;
 const URL_PATTERN = /https?:\/\/\S+/i;
+const PROFILE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "profile");
 
 async function send(chatId, text, extra = {}) {
   return call("sendMessage", { chat_id: chatId, text, ...extra });
@@ -371,6 +373,12 @@ async function handleAdminCommand(chatId, text) {
     return true;
   }
 
+  const setBotPic = /^\/setbotpic(?:\s+(\S+))?$/i.exec(text);
+  if (setBotPic) {
+    await send(chatId, await setBotProfileVideo(setBotPic[1]));
+    return true;
+  }
+
   const broadcast = /^\/broadcast\s+([\s\S]+)$/.exec(text);
   if (broadcast) {
     const message = broadcast[1];
@@ -388,6 +396,38 @@ async function handleAdminCommand(chatId, text) {
   }
 
   return false;
+}
+
+/**
+ * Sets the bot's own profile to one of the spinning logo loops in
+ * assets/profile. BotFather's Edit Botpic only takes a still photo; the Bot
+ * API's setMyProfilePhoto takes an animated one (an MP4 of up to 5 s at
+ * 640x640), uploaded fresh each time -- a file_id cannot be reused here.
+ */
+async function setBotProfileVideo(which) {
+  if (!config.telegramLoginBotToken) return "⚠️ No bot token is set.";
+  const name = /^(kh|inv|invoice)/i.test(which ?? "") ? "kh-invoice-logo" : "saveit-logo";
+  let buffer;
+  try {
+    buffer = await fs.readFile(path.join(PROFILE_DIR, `${name}.mp4`));
+  } catch {
+    return `⚠️ assets/profile/${name}.mp4 is missing.`;
+  }
+  const form = new FormData();
+  // The frame shown where the profile can't play: the logo at rest, face on,
+  // after its turn (the loop is 2.4 s and the turn ends just past 1.3 s).
+  form.set("photo", JSON.stringify({ type: "animated", animation: "attach://logo", main_frame_timestamp: 1.9 }));
+  form.set("logo", new Blob([buffer], { type: "video/mp4" }), `${name}.mp4`);
+  const res = await fetch(`https://api.telegram.org/bot${config.telegramLoginBotToken}/setMyProfilePhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) {
+    console.error("Telegram setMyProfilePhoto failed:", JSON.stringify(data));
+    return `⚠️ Telegram refused it: ${String(data.description ?? res.status).slice(0, 200)}`;
+  }
+  return `✅ Bot profile set to ${name}.mp4 — reopen the chat to see it spin.`;
 }
 
 /** Slash commands, for anyone who prefers typing to tapping. */
