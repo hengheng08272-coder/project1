@@ -334,13 +334,14 @@ export function sectionKeyboard(language) {
   const t = tx(language);
   return {
     // Create invoice stands alone on top -- the one action people reach for
-    // most -- then the day-to-day pairs, then the occasional ones, then Back.
+    // most -- then income/expense, the other two logged every day. Stock,
+    // Unpaid, Shop name, Open KH Invoice and Buy Pro all live one tap into
+    // Today's summary instead of their own row, so this keyboard stays short
+    // enough to leave real room above it -- a payment QR especially.
     keyboard: [
       [{ text: t.kCreate, emoji: "inv_create" }],
       [{ text: t.income, emoji: "inv_in" }, { text: t.expense, emoji: "inv_out" }],
-      [{ text: t.kStock, emoji: "inv_stock" }, { text: t.kSummary, emoji: "inv_summary" }],
-      [{ text: t.unpaid, emoji: "inv_unpaid" }, { text: t.kShop, emoji: "inv_shop" }],
-      [{ text: t.kOpen, emoji: "inv_app" }, { text: t.buy, emoji: "inv_pro" }],
+      [{ text: t.kSummary, emoji: "inv_summary" }],
       [{ text: t.kBack, emoji: "inv_back" }],
     ],
     resize_keyboard: true,
@@ -402,6 +403,19 @@ async function showStockScreen(chatId, user) {
  * A tap on one of the section's keyboard buttons. Returns true when the text
  * was one of them; `backToMenu` is the main keyboard to restore on ⬅️.
  */
+/** The shop-name prompt, shared by the keyboard button and the Home screen's. */
+async function askShopName(chatId, user) {
+  const t = tx(user.language);
+  const s = await bridge("status", { telegram: tgOf(user) }).catch(() => null);
+  if (!s?.linked) {
+    await call("sendMessage", { chat_id: chatId, text: t.needLink });
+    await showHome(chatId, user);
+  } else {
+    awaiting.set(chatId, { kind: "shop", at: Date.now() });
+    await call("sendMessage", { chat_id: chatId, text: t.askShop(s.business_name) });
+  }
+}
+
 export async function handleSectionButton(chatId, user, text, backToMenu) {
   const action = SECTION_ACTIONS.get(String(text ?? "").trim());
   if (!action || !enabled()) return false;
@@ -415,16 +429,8 @@ export async function handleSectionButton(chatId, user, text, backToMenu) {
   } else if (action === "summary") await showHome(chatId, user);
   else if (action === "unpaid") await showUnpaid(chatId, user);
   else if (action === "buy") await showPlans(chatId, user);
-  else if (action === "shop") {
-    const s = await bridge("status", { telegram: tgOf(user) }).catch(() => null);
-    if (!s?.linked) {
-      await call("sendMessage", { chat_id: chatId, text: t.needLink });
-      await showHome(chatId, user);
-    } else {
-      awaiting.set(chatId, { kind: "shop", at: Date.now() });
-      await call("sendMessage", { chat_id: chatId, text: t.askShop(s.business_name) });
-    }
-  } else if (action === "back") {
+  else if (action === "shop") await askShopName(chatId, user);
+  else if (action === "back") {
     await call("sendMessage", { chat_id: chatId, text: t.backDone, reply_markup: backToMenu });
   }
   return true;
@@ -494,8 +500,9 @@ export async function showHome(chatId, user) {
   if (report && stock) keyboard.push([report, stock]);
   keyboard.push([
     { text: t.unpaid, emoji: "inv_unpaid", callback_data: "inv:unpaid" },
-    { text: t.refresh, emoji: "inv_refresh", callback_data: "inv:home" },
+    { text: t.kShop, emoji: "inv_shop", callback_data: "inv:shop" },
   ]);
+  keyboard.push([{ text: t.refresh, emoji: "inv_refresh", callback_data: "inv:home" }]);
   if (!s.subscribed) keyboard.push([{ text: t.buy, emoji: "inv_pro", callback_data: "inv:plans" }]);
   return call("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } });
 }
@@ -653,6 +660,7 @@ export async function handleCallback(cq, user) {
     if (kind === "home") await showHome(chatId, user);
     else if (kind === "plans") await showPlans(chatId, user);
     else if (kind === "unpaid") await showUnpaid(chatId, user);
+    else if (kind === "shop") await askShopName(chatId, user);
     else if (kind === "add") {
       const type = value === "expense" ? "expense" : "income";
       awaiting.set(chatId, { kind: "entry", type, at: Date.now() });
