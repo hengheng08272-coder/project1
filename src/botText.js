@@ -41,6 +41,7 @@ const MENU = [
     ],
   },
   { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice", en: "🧾 KH Invoice", aliases: ["🧾 KH Invoice · វិក្កយបត្រ"] },
+  { action: "watch", emoji: "video", km: "🎬 មើលរឿង", en: "🎬 Watch" },
   { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   { action: "buy", emoji: "credit", km: "💲 បន្ថែម Credit", en: "💲 Add Credit", aliases: ["💎 ទិញ VIP", "💎 Buy VIP", "💎 ទិញ / VIP", "💎 Buy / VIP"] },
   {
@@ -103,7 +104,8 @@ export function mainKeyboard(language) {
   const rows = [
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
-    [button("account"), button("buy")],
+    [button("watch"), button("account")],
+    [button("buy")],
     [button("referral")],
   ];
   if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);

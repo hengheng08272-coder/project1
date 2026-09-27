@@ -18,6 +18,7 @@ import { parseKhqr } from "./khqr.js";
 import { applyAutoRules, retryFailed, runDownload } from "./downloader.js";
 import * as forwarder from "./forwarder.js";
 import * as khInvoice from "./khInvoice.js";
+import * as watch from "./watch.js";
 import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
 import { recordManualUpload } from "./library.js";
 import * as mirror from "./mirror.js";
@@ -1060,6 +1061,7 @@ const server = app.listen(config.port, () => {
   console.log(`Userbot service listening on http://localhost:${config.port}`);
   void registerBotWebhook();
   void khInvoice.announce();
+  void watch.announce();
   void loop();
 });
 

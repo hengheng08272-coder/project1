@@ -23,6 +23,7 @@ import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
 import * as emojiMaker from "./emojiMaker.js";
 import * as khInvoice from "./khInvoice.js";
+import * as watch from "./watch.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { call } from "./notifyBot.js";
@@ -263,6 +264,23 @@ export async function handleMessage(message) {
   // for is an emoji, not a payment screenshot.
   if (text !== "/emoji" && !/^\/start\b/.test(text) && !actionForLabel(text) && (await emojiMaker.handleMessage(message, user))) return;
 
+  // A photo captioned /setshow, from the operator: the show's poster,
+  // downloaded and turned into a custom emoji for it (see watch.setShow).
+  if (message.photo && botPay.isAdminChat(chatId)) {
+    const setShow = /^\/setshow\s+(\S+)\s+(anime|donghua|movie)(?:\s+(ongoing|completed))?(?:\s+(\d+))?$/i.exec(
+      String(message.caption ?? "").trim()
+    );
+    if (setShow) {
+      try {
+        const buffer = await fetchTelegramPhoto(message.photo[message.photo.length - 1].file_id);
+        await send(chatId, await watch.setShow(setShow[1], setShow[2].toLowerCase(), setShow[3]?.toLowerCase(), setShow[4], buffer));
+      } catch (err) {
+        await send(chatId, `⚠️ ${err?.message ?? err}`);
+      }
+      return;
+    }
+  }
+
   // A photo is a payment screenshot, or -- from the operator, captioned
   // /setqr -- the bank QR orders are built from. Checked before the text
   // handling below, since a photo usually has no text at all.
@@ -298,6 +316,8 @@ export async function handleMessage(message) {
       return emojiMaker.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
+    case "watch":
+      return watch.showGenres(chatId, user.language);
     case "account":
       return showAccount(chatId, user);
     case "history":
@@ -392,6 +412,27 @@ async function handleAdminCommand(chatId, text) {
   const speedTest = /^\/dlspeed(?:\s+(\S+))?$/i.exec(text);
   if (speedTest) {
     await send(chatId, await benchmarkDownload(speedTest[1]));
+    return true;
+  }
+
+  const watchGroup = /^\/watchgroup\s+(\S+)$/i.exec(text);
+  if (watchGroup) {
+    await send(chatId, await watch.addOrScanGroup(watchGroup[1]));
+    return true;
+  }
+
+  if (text === "/shows") {
+    await send(chatId, await watch.listAllTopics());
+    return true;
+  }
+
+  const setShow = /^\/setshow\s+(\S+)\s+(anime|donghua|movie)(?:\s+(ongoing|completed))?(?:\s+(\d+))?$/i.exec(text);
+  if (setShow) {
+    try {
+      await send(chatId, await watch.setShow(setShow[1], setShow[2].toLowerCase(), setShow[3]?.toLowerCase(), setShow[4]));
+    } catch (err) {
+      await send(chatId, `⚠️ ${err?.message ?? err}`);
+    }
     return true;
   }
 
@@ -490,6 +531,16 @@ async function benchmarkDownload(link) {
   return lines.join("\n");
 }
 
+/** Downloads a Telegram-hosted photo's bytes, for /setshow's poster. */
+async function fetchTelegramPhoto(fileId) {
+  const info = await call("getFile", { file_id: fileId });
+  const filePath = info?.result?.file_path;
+  if (!filePath) throw new Error("Telegram did not return the file.");
+  const res = await fetch(`https://api.telegram.org/file/bot${config.telegramLoginBotToken}/${filePath}`);
+  if (!res.ok) throw new Error(`Downloading the photo failed (${res.status}).`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 async function setBotProfileVideo(which) {
   if (!config.telegramLoginBotToken) return "⚠️ No bot token is set.";
   const name = /^(kh|inv|invoice)/i.test(which ?? "") ? "kh-invoice-logo" : "saveit-logo";
@@ -538,6 +589,9 @@ export async function handleCallback(cq) {
   const data = String(cq?.data ?? "");
   if (data.startsWith("inv:") && cq.from?.id) {
     return khInvoice.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data.startsWith("watch:") && cq.from?.id) {
+    return watch.handleCallback(cq, await ensureUser(cq.from, null));
   }
   if (!data.startsWith("bot:")) return false;
 

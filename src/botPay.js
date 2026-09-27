@@ -24,6 +24,7 @@ import { progressBar } from "./botText.js";
 import { applyKhqrTemplate, khqrMd5, parseKhqr, validateKhqrTemplate } from "./khqr.js";
 import { renderKhqrCard } from "./khqrCard.js";
 import * as khInvoice from "./khInvoice.js";
+import * as watch from "./watch.js";
 import { call } from "./notifyBot.js";
 
 // A payer has this long to pay one QR before the order lapses. Bakong
@@ -147,7 +148,7 @@ function formatDate(iso) {
 /** SaveIt's own packs. KH Invoice plans live in the same table but have their own screen. */
 async function packages() {
   const all = rows(await db().from("bot_packages").select("*").eq("active", true).order("sort"));
-  return all.filter((pkg) => !khInvoice.isInvoicePackage(pkg.id));
+  return all.filter((pkg) => !khInvoice.isInvoicePackage(pkg.id) && !watch.isWatchPackage(pkg.id));
 }
 
 function packageTitle(pkg, language) {
@@ -160,7 +161,7 @@ function packageTitle(pkg, language) {
  * granted. KH Invoice plans keep their own titles.
  */
 function packageLabel(pkg, language) {
-  if (khInvoice.isInvoicePackage(pkg.id)) return packageTitle(pkg, language);
+  if (khInvoice.isInvoicePackage(pkg.id) || watch.isWatchPackage(pkg.id)) return packageTitle(pkg, language);
   const s = t(language);
   return pkg.downloads ? s.creditPack(pkg.downloads) : s.vipPack(pkg.days);
 }
@@ -197,7 +198,8 @@ function newTicket() {
 }
 
 /** The name printed on (and, for a bank that allows it, written into) the QR. */
-const serviceName = (pkg) => (khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : "SaveIt Pro");
+const serviceName = (pkg) =>
+  khInvoice.isInvoicePackage(pkg.id) ? "KH Invoice Pro" : watch.isWatchPackage(pkg.id) ? "SaveIt Watch" : "SaveIt Pro";
 
 /**
  * A package was tapped: build its QR and send it. With two banks set up the
@@ -310,6 +312,14 @@ async function grant(order, confirmedBy, bankHash = null) {
         });
       }
     }
+    return true;
+  }
+
+  if (watch.isWatchPackage(pkg.id)) {
+    // Paid for Watch Credit, not for Telegram-download Credit: a separate
+    // balance, kept in the watch catalog's own store.
+    const text = await watch.grantedText(user.language, pkg.downloads, user);
+    await call("sendMessage", { chat_id: order.chat_id, text });
     return true;
   }
 

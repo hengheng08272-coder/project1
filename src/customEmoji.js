@@ -275,7 +275,7 @@ export async function buildPack(ownerId) {
   });
   const previous = (await paymentSettings()).emoji_set;
   try {
-    await savePaymentSettings({ emoji: ids, emoji_set: name });
+    await savePaymentSettings({ emoji: ids, emoji_set: name, emoji_owner: ownerId });
   } catch (err) {
     return `❌ The pack was made (https://t.me/addemoji/${name}) but could not be saved: ${err?.message ?? err}`;
   }
@@ -291,4 +291,43 @@ export async function buildPack(ownerId) {
     `{:yt:} {:fb:} {:ig:} {:tt:} {:x:} · {:aba:} {:wing:} {:truemoney:} {:bakong:} {:khqr:}\n\n` +
     `If these show as normal emoji, the bot's owner account (the one that created it in @BotFather) needs Telegram Premium.`
   );
+}
+
+/**
+ * Adds one more custom emoji to the bot's existing shared pack -- a show's
+ * poster, so {:<the id returned>:} puts it next to the show's title anywhere
+ * in the bot. Needs /makeemoji to have been run at least once (the pack and
+ * its owner are read back from bot-config); the pack's owner is the only
+ * account Telegram lets add to it, whoever is running this command.
+ */
+export async function addPosterEmoji(imageBuffer) {
+  const settings = await paymentSettings();
+  const { emoji_set: name, emoji_owner: ownerId } = settings;
+  if (!name || !ownerId) throw new Error("No emoji pack yet -- run /makeemoji first.");
+
+  const png = await toEmojiPng(imageBuffer);
+  const form = new FormData();
+  form.set("user_id", String(ownerId));
+  form.set("name", name);
+  form.set("sticker", JSON.stringify({ sticker: "attach://s", format: "static", emoji_list: ["🎬"], keywords: ["poster"] }));
+  form.set("s", new Blob([png], { type: "image/png" }), "poster.png");
+  const added = await botApiForm("addStickerToSet", form);
+  if (!added.ok) throw new Error(added.description ?? "Telegram refused the poster.");
+
+  const set = await botApi("getStickerSet", { name });
+  const list = set?.result?.stickers ?? [];
+  const id = list[list.length - 1]?.custom_emoji_id;
+  if (!id) throw new Error("Added, but Telegram didn't return its id.");
+  return id;
+}
+
+/** Crops/scales an arbitrary image down to the 100x100 PNG a sticker needs. */
+async function toEmojiPng(buffer) {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const img = await loadImage(buffer);
+  const side = Math.min(img.width, img.height);
+  const c = createCanvas(100, 100);
+  const g = c.getContext("2d");
+  g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 100, 100);
+  return c.toBuffer("image/png");
 }

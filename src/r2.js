@@ -137,6 +137,12 @@ export async function uploadBody(body, key, contentType = "video/mp4", onProgres
   return publicUrl(key, conf.publicUrl);
 }
 
+/** The public URL an already-uploaded key would have, for a caller that already knows the key. */
+export async function urlForKey(key) {
+  const { conf } = await clientAndBucket();
+  return publicUrl(key, conf.publicUrl);
+}
+
 /** The public URL of a key, or the bare key when no public URL is configured. */
 function publicUrl(key, configured) {
   const base = (configured || "").replace(/\/+$/, "");
