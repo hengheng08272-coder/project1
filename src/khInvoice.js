@@ -9,7 +9,7 @@
  *   - it calls the app's `telegram-bridge` edge function (shared secret) to
  *     read a shop's numbers, record income/expense, confirm sign-ins and
  *     switch on a paid plan;
- *   - it draws the "🧾 KH Invoice" screen and its buttons.
+ *   - it draws the "{:inv_create:} KH Invoice" screen and its buttons.
  *
  * Payment reuses botPay's KHQR orders: the plans are bot_packages rows with
  * ids "inv_*", and botPay.grant hands those to activatePlan() below.
@@ -26,10 +26,10 @@ export const INVOICE_PACKAGE_PREFIX = "inv_";
 // Prices must match the edge function's PLANS -- it is the one that decides
 // how many months a plan adds; these rows only set what the QR charges.
 const PACKAGES = [
-  { id: "inv_1m", plan: "1m", title_km: "🧾 KH Invoice Pro ១ ខែ", title_en: "🧾 KH Invoice Pro 1 month", price_usd: 3, days: 30, sort: 101 },
-  { id: "inv_2m", plan: "2m", title_km: "🧾 KH Invoice Pro ២ ខែ", title_en: "🧾 KH Invoice Pro 2 months", price_usd: 5, days: 60, sort: 102 },
-  { id: "inv_3m", plan: "3m", title_km: "🧾 KH Invoice Pro ៣ ខែ", title_en: "🧾 KH Invoice Pro 3 months", price_usd: 7, days: 90, sort: 103 },
-  { id: "inv_1y", plan: "1y", title_km: "🧾 KH Invoice Pro ១២ ខែ ⭐", title_en: "🧾 KH Invoice Pro 12 months ⭐", price_usd: 25, days: 365, sort: 104 },
+  { id: "inv_1m", plan: "1m", title_km: "{:inv_create:} KH Invoice Pro ១ ខែ", title_en: "{:inv_create:} KH Invoice Pro 1 month", price_usd: 3, days: 30, sort: 101 },
+  { id: "inv_2m", plan: "2m", title_km: "{:inv_create:} KH Invoice Pro ២ ខែ", title_en: "{:inv_create:} KH Invoice Pro 2 months", price_usd: 5, days: 60, sort: 102 },
+  { id: "inv_3m", plan: "3m", title_km: "{:inv_create:} KH Invoice Pro ៣ ខែ", title_en: "{:inv_create:} KH Invoice Pro 3 months", price_usd: 7, days: 90, sort: 103 },
+  { id: "inv_1y", plan: "1y", title_km: "{:inv_create:} KH Invoice Pro ១២ ខែ {:star:}", title_en: "{:inv_create:} KH Invoice Pro 12 months {:star:}", price_usd: 25, days: 365, sort: 104 },
 ];
 // Plans that were sold before and must no longer be offered.
 const RETIRED_PACKAGES = ["inv_6m"];
@@ -136,13 +136,13 @@ const L = {
     title: "{:inv_app:} KH Invoice",
     tagline: "វិក្កយបត្រ · ចំណូលចំណាយ · ស្តុក · បំណុល — ក្នុង Telegram",
     notLinked:
-      "🧾 KH Invoice — គ្រប់គ្រងហាងរបស់អ្នកពីទូរស័ព្ទ\n\n" +
-      "✅ ចេញវិក្កយបត្រស្អាតៗ ផ្ញើជារូបភាព\n" +
-      "✅ កត់ចំណូល / ចំណាយ ដុល្លារ និង រៀល\n" +
-      "✅ ស្តុកទំនិញ + ជូនដំណឹងពេលជិតអស់\n" +
-      "✅ បំណុលអតិថិជន និង អ្នកផ្គត់ផ្គង់\n" +
-      "✅ របាយការណ៍ចំណេញ ប្រចាំថ្ងៃ/ខែ\n\n" +
-      "🎁 សាកល្បងឥតគិតថ្លៃ ១៥ ថ្ងៃ — ចុចប៊ូតុងខាងក្រោម គណនីបង្កើតស្វ័យប្រវត្តិ មិនបាច់លេខសម្ងាត់ទេ។\n\n" +
+      "{:inv_create:} KH Invoice — គ្រប់គ្រងហាងរបស់អ្នកពីទូរស័ព្ទ\n\n" +
+      "{:ok:} ចេញវិក្កយបត្រស្អាតៗ ផ្ញើជារូបភាព\n" +
+      "{:ok:} កត់ចំណូល / ចំណាយ ដុល្លារ និង រៀល\n" +
+      "{:ok:} ស្តុកទំនិញ + ជូនដំណឹងពេលជិតអស់\n" +
+      "{:ok:} បំណុលអតិថិជន និង អ្នកផ្គត់ផ្គង់\n" +
+      "{:ok:} របាយការណ៍ចំណេញ ប្រចាំថ្ងៃ/ខែ\n\n" +
+      "{:gift:} សាកល្បងឥតគិតថ្លៃ ១៥ ថ្ងៃ — ចុចប៊ូតុងខាងក្រោម គណនីបង្កើតស្វ័យប្រវត្តិ មិនបាច់លេខសម្ងាត់ទេ។\n\n" +
       "មានគណនីលេខទូរស័ព្ទរួចហើយ? បើកកម្មវិធី → គណនី → «ភ្ជាប់ Telegram»។",
     start: "🚀 ចាប់ផ្ដើមឥតគិតថ្លៃ ១៥ ថ្ងៃ",
     open: "📱 បើក KH Invoice",
@@ -151,50 +151,50 @@ const L = {
     unpaid: "🧾 មិនទាន់បង់",
     refresh: "🔄 ថ្មី",
     buy: "👑 ទិញ Pro",
-    trial: (bar, left, total) => `🎁 សាកល្បង: ${bar} នៅសល់ ${left}/${total} ថ្ងៃ`,
-    trialOver: "⛔ ការសាកល្បងបានផុតកំណត់ — ចុច 👑 ទិញ Pro ដើម្បីបន្ត",
-    pro: (until) => `👑 Pro សកម្ម រហូតដល់ ${until}`,
+    trial: (bar, left, total) => `{:gift:} សាកល្បង: ${bar} នៅសល់ ${left}/${total} ថ្ងៃ`,
+    trialOver: "{:fail:} ការសាកល្បងបានផុតកំណត់ — ចុច {:m_pro:} ទិញ Pro ដើម្បីបន្ត",
+    pro: (until) => `{:m_pro:} Pro សកម្ម រហូតដល់ ${until}`,
     today: "📅 ថ្ងៃនេះ",
     month: "🗓 ខែនេះ",
     inc: "{:inv_in:} ចំណូល",
     exp: "{:inv_out:} ចំណាយ",
-    bal: "💰 នៅសល់",
+    bal: "{:credit:} នៅសល់",
     unpaidLine: (n, amount) => `{:inv_unpaid:} វិក្កយបត្រមិនទាន់បង់: ${n}${n ? ` · ${amount}` : ""}`,
     lowStock: (n) => `{:inv_stock:} ទំនិញជិតអស់: ${n}`,
-    tip: "💡 ឆាប់ៗ: វាយ +25 លក់កាហ្វេ ឬ -10000៛ ថ្លៃទឹក ដើម្បីកត់ភ្លាមៗ",
+    tip: "{:bulb:} ឆាប់ៗ: វាយ +25 លក់កាហ្វេ ឬ -10000៛ ថ្លៃទឹក ដើម្បីកត់ភ្លាមៗ",
     askAmount: (type) =>
-      `${type === "income" ? "➕ ចំណូល" : "➖ ចំណាយ"} — វាយចំនួន និងពិពណ៌នា\n\nឧទាហរណ៍៖\n• 25 លក់កាហ្វេ\n• 15000៛ ថ្លៃដឹក\n• $3.5 ទឹកកក`,
-    badAmount: "❌ មិនស្គាល់ចំនួនទឹកប្រាក់ទេ។ ឧទាហរណ៍៖ 25 លក់កាហ្វេ ឬ 15000៛ ថ្លៃដឹក",
-    saved: (type, amount, desc) => `✅ បានកត់${type === "income" ? "ចំណូល" : "ចំណាយ"} ${amount} — ${desc}`,
-    needLink: "🔗 មិនទាន់មានគណនី KH Invoice ទេ — ចុច «ចាប់ផ្ដើម» នៅខាងក្រោមជាមុនសិន។",
-    locked: "🔒 គណនី KH Invoice របស់អ្នកត្រូវបានចាក់សោ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
-    unpaidTitle: "🧾 វិក្កយបត្រមិនទាន់បង់",
-    unpaidNone: "🎉 គ្មានវិក្កយបត្រជំពាក់ទេ!",
-    plans: "👑 KH Invoice Pro — ជ្រើសរើសគម្រោង\n\n✅ ប្រើមុខងារទាំងអស់ គ្មានដែនកំណត់\n✅ បង់តាម ABA / KHQR ធនាគារណាក៏បាន\n✅ បើកដំណើរការភ្លាមៗ ក្រោយបង់",
+      `${type === "income" ? "{:inv_in:} ចំណូល" : "{:inv_out:} ចំណាយ"} — វាយចំនួន និងពិពណ៌នា\n\nឧទាហរណ៍៖\n• 25 លក់កាហ្វេ\n• 15000៛ ថ្លៃដឹក\n• $3.5 ទឹកកក`,
+    badAmount: "{:fail:} មិនស្គាល់ចំនួនទឹកប្រាក់ទេ។ ឧទាហរណ៍៖ 25 លក់កាហ្វេ ឬ 15000៛ ថ្លៃដឹក",
+    saved: (type, amount, desc) => `{:ok:} បានកត់${type === "income" ? "ចំណូល" : "ចំណាយ"} ${amount} — ${desc}`,
+    needLink: "{:link:} មិនទាន់មានគណនី KH Invoice ទេ — ចុច «ចាប់ផ្ដើម» នៅខាងក្រោមជាមុនសិន។",
+    locked: "{:lock:} គណនី KH Invoice របស់អ្នកត្រូវបានចាក់សោ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
+    unpaidTitle: "{:inv_create:} វិក្កយបត្រមិនទាន់បង់",
+    unpaidNone: "{:party:} គ្មានវិក្កយបត្រជំពាក់ទេ!",
+    plans: "{:m_pro:} KH Invoice Pro — ជ្រើសរើសគម្រោង\n\n{:ok:} ប្រើមុខងារទាំងអស់ គ្មានដែនកំណត់\n{:ok:} បង់តាម ABA / KHQR ធនាគារណាក៏បាន\n{:ok:} បើកដំណើរការភ្លាមៗ ក្រោយបង់",
     loginAsk:
-      "🔐 ចូល KH Invoice តាម Telegram?\n\nមាននរណាម្នាក់ (សង្ឃឹមថាអ្នក) កំពុងចូល KH Invoice នៅលើកម្មវិធីរុករក។\n⚠️ ចុច «បាទ/ចាស» លុះត្រាតែអ្នកទើបតែចុច «ចូលតាម Telegram» ដោយខ្លួនឯង។",
+      "{:lock:} ចូល KH Invoice តាម Telegram?\n\nមាននរណាម្នាក់ (សង្ឃឹមថាអ្នក) កំពុងចូល KH Invoice នៅលើកម្មវិធីរុករក។\n{:warn:} ចុច «បាទ/ចាស» លុះត្រាតែអ្នកទើបតែចុច «ចូលតាម Telegram» ដោយខ្លួនឯង។",
     loginYes: "✅ បាទ/ចាស ចូល",
     no: "❌ ទេ",
-    loginDone: "✅ រួចរាល់! ត្រឡប់ទៅកម្មវិធីរុករកវិញ — អ្នកនឹងចូលដោយស្វ័យប្រវត្តិ។",
-    linkAsk: (name) => `🔗 ភ្ជាប់ Telegram នេះជាមួយគណនី KH Invoice «${name || "—"}»?\n\nក្រោយភ្ជាប់ អ្នកអាចចូល និង ប្រើពី bot នេះបាន។`,
+    loginDone: "{:ok:} រួចរាល់! ត្រឡប់ទៅកម្មវិធីរុករកវិញ — អ្នកនឹងចូលដោយស្វ័យប្រវត្តិ។",
+    linkAsk: (name) => `{:link:} ភ្ជាប់ Telegram នេះជាមួយគណនី KH Invoice «${name || "—"}»?\n\nក្រោយភ្ជាប់ អ្នកអាចចូល និង ប្រើពី bot នេះបាន។`,
     linkYes: "✅ ភ្ជាប់",
-    linkDone: (name) => `✅ បានភ្ជាប់ Telegram ជាមួយ «${name || "KH Invoice"}» រួចរាល់!`,
-    inUse: (name) => `⚠️ Telegram នេះបានភ្ជាប់ជាមួយគណនីផ្សេង «${name || "—"}» រួចហើយ។`,
+    linkDone: (name) => `{:ok:} បានភ្ជាប់ Telegram ជាមួយ «${name || "KH Invoice"}» រួចរាល់!`,
+    inUse: (name) => `{:warn:} Telegram នេះបានភ្ជាប់ជាមួយគណនីផ្សេង «${name || "—"}» រួចហើយ។`,
     expired: "⌛ តំណនេះផុតកំណត់ ឬ ប្រើរួចហើយ។ សូមព្យាយាមម្ដងទៀតពីកម្មវិធី។",
     cancelled: "បានបោះបង់។",
-    down: "⚠️ KH Invoice មិនអាចភ្ជាប់បានឥឡូវនេះ។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។",
-    granted: (until) => `🎉 KH Invoice Pro បានបើកដំណើរការ!${until ? ` រហូតដល់ ${until}` : ""}\nអរគុណសម្រាប់ការគាំទ្រ 🙏`,
-    section: "🧾 ផ្នែក KH Invoice — ប៊ូតុងខាងក្រោមប្ដូរមកមុខងារវិក្កយបត្រ។ ចុច ⬅️ ម៉ឺនុយដើម ដើម្បីត្រឡប់។",
+    down: "{:warn:} KH Invoice មិនអាចភ្ជាប់បានឥឡូវនេះ។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។",
+    granted: (until) => `{:party:} KH Invoice Pro បានបើកដំណើរការ!${until ? ` រហូតដល់ ${until}` : ""}\nអរគុណសម្រាប់ការគាំទ្រ 🙏`,
+    section: "{:inv_create:} ផ្នែក KH Invoice — ប៊ូតុងខាងក្រោមប្ដូរមកមុខងារវិក្កយបត្រ។ ចុច {:inv_back:} ម៉ឺនុយដើម ដើម្បីត្រឡប់។",
     kCreate: "🧾 បង្កើតវិក្កយបត្រ",
     kOpen: "📱 បើក KH Invoice",
     kSummary: "📋 សង្ខេបថ្ងៃនេះ",
     kShop: "🏪 ឈ្មោះហាង",
     kStock: "📦 ស្តុកទំនិញ",
     kBack: "⬅️ ម៉ឺនុយដើម",
-    backDone: "⬅️ ត្រឡប់ទៅម៉ឺនុយដើម",
-    createHint: "🧾 ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកផ្ទាំងបង្កើតវិក្កយបត្រ (ចូលដោយស្វ័យប្រវត្តិ)៖",
-    stockHint: "📦 ចុចប៊ូតុងខាងក្រោម ដើម្បីមើលស្តុកទំនិញ (ចូលដោយស្វ័យប្រវត្តិ)៖",
-    openHint: "📱 ជ្រើសផ្ទាំងដែលចង់បើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    backDone: "{:inv_back:} ត្រឡប់ទៅម៉ឺនុយដើម",
+    createHint: "{:inv_create:} ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកផ្ទាំងបង្កើតវិក្កយបត្រ (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    stockHint: "{:inv_stock:} ចុចប៊ូតុងខាងក្រោម ដើម្បីមើលស្តុកទំនិញ (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    openHint: "{:app_tg:} ជ្រើសផ្ទាំងដែលចង់បើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
     aCreate: "🧾 បង្កើតវិក្កយបត្រ",
     aInvoices: "📂 វិក្កយបត្រទាំងអស់",
     aReport: "📊 របាយការណ៍",
@@ -202,21 +202,21 @@ const L = {
     aCustomer: "👥 អតិថិជន",
     aDebt: "💳 បំណុល",
     aHome: "🏠 ទំព័រដើម",
-    askShop: (current) => `🏪 វាយឈ្មោះហាងរបស់អ្នក (បង្ហាញលើវិក្កយបត្រ)${current ? `\nបច្ចុប្បន្ន៖ ${current}` : ""}`,
-    shopSaved: (name) => `✅ ឈ្មោះហាងបានរក្សាទុក៖ ${name}`,
-    noWebApp: "⚠️ កម្មវិធី KH Invoice មិនទាន់រៀបចំ link ទេ។",
+    askShop: (current) => `{:inv_shop:} វាយឈ្មោះហាងរបស់អ្នក (បង្ហាញលើវិក្កយបត្រ)${current ? `\nបច្ចុប្បន្ន៖ ${current}` : ""}`,
+    shopSaved: (name) => `{:ok:} ឈ្មោះហាងបានរក្សាទុក៖ ${name}`,
+    noWebApp: "{:warn:} កម្មវិធី KH Invoice មិនទាន់រៀបចំ link ទេ។",
   },
   en: {
     title: "{:inv_app:} KH Invoice",
     tagline: "Invoices · income & expenses · stock · debts — inside Telegram",
     notLinked:
-      "🧾 KH Invoice — run your shop from your phone\n\n" +
-      "✅ Clean invoices, shared as images\n" +
-      "✅ Income / expenses in USD and KHR\n" +
-      "✅ Stock with low-stock alerts\n" +
-      "✅ Customer and supplier debts\n" +
-      "✅ Daily / monthly profit reports\n\n" +
-      "🎁 15-day free trial — tap below and your account is created automatically, no password.\n\n" +
+      "{:inv_create:} KH Invoice — run your shop from your phone\n\n" +
+      "{:ok:} Clean invoices, shared as images\n" +
+      "{:ok:} Income / expenses in USD and KHR\n" +
+      "{:ok:} Stock with low-stock alerts\n" +
+      "{:ok:} Customer and supplier debts\n" +
+      "{:ok:} Daily / monthly profit reports\n\n" +
+      "{:gift:} 15-day free trial — tap below and your account is created automatically, no password.\n\n" +
       "Already have a phone-number account? Open the app → Account → “Connect Telegram”.",
     start: "🚀 Start 15-day free trial",
     open: "📱 Open KH Invoice",
@@ -225,50 +225,50 @@ const L = {
     unpaid: "🧾 Unpaid",
     refresh: "🔄 Refresh",
     buy: "👑 Buy Pro",
-    trial: (bar, left, total) => `🎁 Trial: ${bar} ${left}/${total} days left`,
-    trialOver: "⛔ Your trial has ended — tap 👑 Buy Pro to continue",
-    pro: (until) => `👑 Pro active until ${until}`,
+    trial: (bar, left, total) => `{:gift:} Trial: ${bar} ${left}/${total} days left`,
+    trialOver: "{:fail:} Your trial has ended — tap {:m_pro:} Buy Pro to continue",
+    pro: (until) => `{:m_pro:} Pro active until ${until}`,
     today: "📅 Today",
     month: "🗓 This month",
     inc: "{:inv_in:} Income",
     exp: "{:inv_out:} Expense",
-    bal: "💰 Balance",
+    bal: "{:credit:} Balance",
     unpaidLine: (n, amount) => `{:inv_unpaid:} Unpaid invoices: ${n}${n ? ` · ${amount}` : ""}`,
     lowStock: (n) => `{:inv_stock:} Low stock: ${n}`,
-    tip: "💡 Shortcut: type +25 coffee sale or -10000៛ water to record instantly",
+    tip: "{:bulb:} Shortcut: type +25 coffee sale or -10000៛ water to record instantly",
     askAmount: (type) =>
-      `${type === "income" ? "➕ Income" : "➖ Expense"} — type the amount and a note\n\nFor example:\n• 25 coffee sales\n• 15000៛ delivery\n• $3.5 ice`,
-    badAmount: "❌ I couldn't read an amount. Try: 25 coffee sales, or 15000៛ delivery",
-    saved: (type, amount, desc) => `✅ ${type === "income" ? "Income" : "Expense"} recorded: ${amount} — ${desc}`,
-    needLink: "🔗 You don't have a KH Invoice account yet — tap “Start” below first.",
-    locked: "🔒 Your KH Invoice account is locked. Please contact the operator.",
-    unpaidTitle: "🧾 Unpaid invoices",
-    unpaidNone: "🎉 No unpaid invoices!",
-    plans: "👑 KH Invoice Pro — choose a plan\n\n✅ Every feature, no limits\n✅ Pay with ABA / any KHQR bank\n✅ Switched on the moment you pay",
+      `${type === "income" ? "{:inv_in:} Income" : "{:inv_out:} Expense"} — type the amount and a note\n\nFor example:\n• 25 coffee sales\n• 15000៛ delivery\n• $3.5 ice`,
+    badAmount: "{:fail:} I couldn't read an amount. Try: 25 coffee sales, or 15000៛ delivery",
+    saved: (type, amount, desc) => `{:ok:} ${type === "income" ? "Income" : "Expense"} recorded: ${amount} — ${desc}`,
+    needLink: "{:link:} You don't have a KH Invoice account yet — tap “Start” below first.",
+    locked: "{:lock:} Your KH Invoice account is locked. Please contact the operator.",
+    unpaidTitle: "{:inv_create:} Unpaid invoices",
+    unpaidNone: "{:party:} No unpaid invoices!",
+    plans: "{:m_pro:} KH Invoice Pro — choose a plan\n\n{:ok:} Every feature, no limits\n{:ok:} Pay with ABA / any KHQR bank\n{:ok:} Switched on the moment you pay",
     loginAsk:
-      "🔐 Sign in to KH Invoice with Telegram?\n\nSomeone (hopefully you) is signing in to KH Invoice in a browser.\n⚠️ Only tap “Yes” if you just pressed “Sign in with Telegram” yourself.",
+      "{:lock:} Sign in to KH Invoice with Telegram?\n\nSomeone (hopefully you) is signing in to KH Invoice in a browser.\n{:warn:} Only tap “Yes” if you just pressed “Sign in with Telegram” yourself.",
     loginYes: "✅ Yes, sign me in",
     no: "❌ No",
-    loginDone: "✅ Done! Go back to your browser — you'll be signed in automatically.",
-    linkAsk: (name) => `🔗 Connect this Telegram to the KH Invoice account “${name || "—"}”?\n\nAfterwards you can sign in and use it from this bot.`,
+    loginDone: "{:ok:} Done! Go back to your browser — you'll be signed in automatically.",
+    linkAsk: (name) => `{:link:} Connect this Telegram to the KH Invoice account “${name || "—"}”?\n\nAfterwards you can sign in and use it from this bot.`,
     linkYes: "✅ Connect",
-    linkDone: (name) => `✅ Telegram connected to “${name || "KH Invoice"}”!`,
-    inUse: (name) => `⚠️ This Telegram is already connected to another account, “${name || "—"}”.`,
+    linkDone: (name) => `{:ok:} Telegram connected to “${name || "KH Invoice"}”!`,
+    inUse: (name) => `{:warn:} This Telegram is already connected to another account, “${name || "—"}”.`,
     expired: "⌛ This link has expired or was already used. Please try again from the app.",
     cancelled: "Cancelled.",
-    down: "⚠️ KH Invoice can't be reached right now. Please try again in a moment.",
-    granted: (until) => `🎉 KH Invoice Pro is on!${until ? ` Until ${until}` : ""}\nThank you for your support 🙏`,
-    section: "🧾 KH Invoice section — the buttons below now work on invoices. Tap ⬅️ Main menu to go back.",
+    down: "{:warn:} KH Invoice can't be reached right now. Please try again in a moment.",
+    granted: (until) => `{:party:} KH Invoice Pro is on!${until ? ` Until ${until}` : ""}\nThank you for your support 🙏`,
+    section: "{:inv_create:} KH Invoice section — the buttons below now work on invoices. Tap {:inv_back:} Main menu to go back.",
     kCreate: "🧾 Create invoice",
     kOpen: "📱 Open KH Invoice",
     kSummary: "📋 Today's summary",
     kShop: "🏪 Shop name",
     kStock: "📦 Stock",
     kBack: "⬅️ Main menu",
-    backDone: "⬅️ Back to the main menu",
-    createHint: "🧾 Tap below to open the new-invoice screen (signed in automatically):",
-    stockHint: "📦 Tap below to see your stock (signed in automatically):",
-    openHint: "📱 Pick a screen to open (signed in automatically):",
+    backDone: "{:inv_back:} Back to the main menu",
+    createHint: "{:inv_create:} Tap below to open the new-invoice screen (signed in automatically):",
+    stockHint: "{:inv_stock:} Tap below to see your stock (signed in automatically):",
+    openHint: "{:app_tg:} Pick a screen to open (signed in automatically):",
     aCreate: "🧾 Create invoice",
     aInvoices: "📂 All invoices",
     aReport: "📊 Report",
@@ -276,9 +276,9 @@ const L = {
     aCustomer: "👥 Customers",
     aDebt: "💳 Debts",
     aHome: "🏠 Home",
-    askShop: (current) => `🏪 Type your shop name (shown on invoices)${current ? `\nNow: ${current}` : ""}`,
-    shopSaved: (name) => `✅ Shop name saved: ${name}`,
-    noWebApp: "⚠️ The KH Invoice app link isn't set up yet.",
+    askShop: (current) => `{:inv_shop:} Type your shop name (shown on invoices)${current ? `\nNow: ${current}` : ""}`,
+    shopSaved: (name) => `{:ok:} Shop name saved: ${name}`,
+    noWebApp: "{:warn:} The KH Invoice app link isn't set up yet.",
   },
 };
 const tx = (language) => L[language] ?? L.km;
@@ -401,7 +401,7 @@ async function showStockScreen(chatId, user) {
 
 /**
  * A tap on one of the section's keyboard buttons. Returns true when the text
- * was one of them; `backToMenu` is the main keyboard to restore on ⬅️.
+ * was one of them; `backToMenu` is the main keyboard to restore on {:inv_back:}.
  */
 /** The shop-name prompt, shared by the keyboard button and the Home screen's. */
 async function askShopName(chatId, user) {
@@ -436,7 +436,7 @@ export async function handleSectionButton(chatId, user, text, backToMenu) {
   return true;
 }
 
-// Waiting for the amount after ➕ / ➖. In memory on purpose: a restart just
+// Waiting for the amount after {:inv_in:} / {:inv_out:}. In memory on purpose: a restart just
 // means the person taps the button again.
 const awaiting = new Map();
 const AWAIT_MS = 10 * 60 * 1000;
@@ -614,7 +614,7 @@ export async function handleStart(chatId, user, payload) {
 }
 
 /**
- * Plain text that belongs to KH Invoice: the amount after ➕/➖, or a
+ * Plain text that belongs to KH Invoice: the amount after {:inv_in:}/{:inv_out:}, or a
  * "+25 coffee" / "-5000៛ ice" shortcut. Returns true when handled.
  */
 export async function handleText(chatId, user, text) {
@@ -641,7 +641,7 @@ async function saveShopName(chatId, user, text) {
   await call("sendMessage", { chat_id: chatId, text: r.ok ? t.shopSaved(r.business_name) : r.error === "not_linked" ? t.needLink : t.down });
 }
 
-/** Forgets a half-finished ➕/➖ when the person moves on to something else. */
+/** Forgets a half-finished {:inv_in:}/{:inv_out:} when the person moves on to something else. */
 export function cancelPending(chatId) {
   awaiting.delete(chatId);
 }

@@ -82,6 +82,11 @@ export const EMOJI = {
   heart: ["heart", "❤️"],
   link: ["link", "🔗"],
   lock: ["lock", "🔒"],
+  ticket: ["ticket", "🎫"],
+  camera: ["camera", "📷"],
+  bulb: ["bulb", "💡"],
+  party: ["party", "🎉"],
+  warn: ["warn", "⚠️"],
 };
 
 // {:name:} is one of EMOJI; {:1234...:} is any custom emoji by its id (one a

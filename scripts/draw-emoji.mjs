@@ -917,6 +917,149 @@ icon("lock", (g, t) => {
   g.fillRect(47, 62, 6, 13);
 }, { still: 0.8 });
 
+// Ticket: a stub with a torn perforation, the notch cut once.
+icon("ticket", (g, t) => {
+  const cut = ease(t / 0.5);
+  line(g, 6, blue(g));
+  g.beginPath();
+  g.moveTo(14, 30);
+  g.arc(14, 50, 8, -Math.PI / 2, Math.PI / 2, true);
+  g.lineTo(86, 70);
+  g.arc(86, 50, 8, Math.PI / 2, -Math.PI / 2, true);
+  g.closePath();
+  g.stroke();
+  g.setLineDash([1, 7]);
+  g.lineCap = "round";
+  line(g, 6, blue(g, 20, 80));
+  g.beginPath();
+  g.moveTo(56, 26);
+  g.lineTo(56, 26 + 48 * Math.min(1, cut * 1.4));
+  g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = gold(g, 40, 60);
+  g.beginPath();
+  g.arc(56, 50, 4.5, 0, TAU);
+  g.fill();
+}, { still: 0.9 });
+
+// Camera: a body and lens, the shutter blinking once per loop.
+icon("camera", (g, t) => {
+  const blink = t > 0.55 && t < 0.68 ? 0.15 : 1;
+  line(g, 6, blue(g, 20, 80));
+  g.beginPath();
+  g.roundRect(14, 34, 72, 50, 10);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(36, 34);
+  g.lineTo(42, 22);
+  g.lineTo(64, 22);
+  g.lineTo(70, 34);
+  g.stroke();
+  g.save();
+  g.translate(50, 60);
+  g.scale(blink, blink);
+  line(g, 6, gold(g, -20, 20));
+  g.beginPath();
+  g.arc(0, 0, 16, 0, TAU);
+  g.stroke();
+  g.restore();
+  g.fillStyle = blue(g, 30, 40);
+  g.beginPath();
+  g.arc(72, 42, 3, 0, TAU);
+  g.fill();
+}, { still: 0.3 });
+
+// Tip: a lightbulb that switches on, a filament glowing gold.
+icon("bulb", (g, t) => {
+  const on = Math.max(0, wave(t, 1, 0.25));
+  line(g, 6.5, blue(g, 14, 60));
+  g.beginPath();
+  g.arc(50, 40, 22, Math.PI * 0.15, Math.PI * 0.85, true);
+  g.moveTo(32, 53);
+  g.bezierCurveTo(30, 64, 38, 68, 38, 76);
+  g.moveTo(68, 53);
+  g.bezierCurveTo(70, 64, 62, 68, 62, 76);
+  g.stroke();
+  line(g, 6, gold(g, 58, 84));
+  g.beginPath();
+  g.roundRect(38, 76, 24, 8, 3);
+  g.moveTo(41, 86);
+  g.lineTo(59, 86);
+  g.stroke();
+  if (on > 0.15) {
+    g.save();
+    g.globalAlpha = Math.min(1, on);
+    g.fillStyle = "#FFF3C4";
+    g.shadowColor = "#FDE68A";
+    g.shadowBlur = 10 * on;
+    g.beginPath();
+    g.arc(50, 40, 13, 0, TAU);
+    g.fill();
+    g.restore();
+  }
+  g.strokeStyle = "#B45309";
+  g.lineWidth = 2.6;
+  g.beginPath();
+  g.moveTo(41, 46);
+  g.lineTo(46, 34);
+  g.lineTo(50, 44);
+  g.lineTo(54, 34);
+  g.lineTo(59, 46);
+  g.stroke();
+}, { still: 0 });
+
+// Party: confetti bursting from a popper, each piece its own colour.
+icon("party", (g, t) => {
+  line(g, 7, gold(g, 40, 80));
+  g.save();
+  g.translate(30, 78);
+  g.rotate(-0.6);
+  g.beginPath();
+  g.moveTo(-10, 10);
+  g.lineTo(10, 10);
+  g.lineTo(6, -14);
+  g.lineTo(-6, -14);
+  g.closePath();
+  g.stroke();
+  g.restore();
+  const bits = [
+    [58, 30, "#F97316", 0], [72, 46, "#34D399", 0.2], [50, 20, "#60A5FA", 0.4],
+    [80, 62, "#FBBF24", 0.6], [64, 60, "#F472B6", 0.8], [40, 40, "#38BDF8", 0.1],
+  ];
+  for (const [bx, by, colour, ph] of bits) {
+    const p = ease(Math.min(1, (t + ph) % 1 / 0.7));
+    const x = bx + 14 * p;
+    const y = by - 20 * p + 24 * p * p;
+    g.save();
+    g.globalAlpha = Math.max(0, 1 - p);
+    g.translate(x, y);
+    g.rotate(p * 6);
+    g.fillStyle = colour;
+    g.fillRect(-3.5, -3.5, 7, 7);
+    g.restore();
+  }
+}, { sweep: false });
+
+// Warning: a triangle with an exclamation mark, a gentle shake.
+icon("warn", (g, t) => {
+  const shake = 2.5 * Math.sin(TAU * t * 3) * Math.max(0, 1 - t * 2);
+  g.translate(shake, 0);
+  g.fillStyle = gold(g, 14, 82);
+  g.beginPath();
+  g.moveTo(50, 12);
+  g.lineTo(90, 82);
+  g.lineTo(10, 82);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.roundRect(46, 36, 8, 26, 4);
+  g.fill();
+  g.beginPath();
+  g.arc(50, 70, 4.5, 0, TAU);
+  g.fill();
+}, { still: 0.8, glints: false });
+
 // ------------------------------------------------------------ platforms
 /** A soft heartbeat about the tile's centre (two quick pulses per loop). */
 function beat(g, t, amount = 0.07) {

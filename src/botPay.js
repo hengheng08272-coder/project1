@@ -1,7 +1,7 @@
 /**
  * Free + paid use of the menu bot.
  *
- *   💎 Buy  →  pick a package  →  a KHQR for that exact amount arrives
+ *   {:diamond:} Buy  →  pick a package  →  a KHQR for that exact amount arrives
  *   →  pay in ABA / any Bakong bank  →  confirmed one of two ways:
  *        - automatically, when BAKONG_API_TOKEN is set: the worker asks
  *          Bakong whether that exact QR (by md5) has been paid, for the
@@ -40,51 +40,51 @@ const L = {
     creditScreen: (standing) =>
       `{:credit:} Credit របស់អ្នក\n${standing}\n\n` +
       `📌 1 Credit = ទាញវីដេអូ Telegram ឯកជន 1\n` +
-      `♾ YouTube · FB · IG · TikTok — ឥតគិតថ្លៃ មិនប្រើ Credit\n\n` +
+      `{:m_free:} YouTube · FB · IG · TikTok — ឥតគិតថ្លៃ មិនប្រើ Credit\n\n` +
       `{:m_buy:} ជ្រើសរើសកញ្ចប់៖`,
     creditLine: (bar, left, total) => `${bar}  នៅសល់ ${left} / ${total} Credit`,
-    premiumLine: (until) => `👑 VIP មិនកំណត់ — រហូតដល់ ${until}`,
+    premiumLine: (until) => `{:m_pro:} VIP មិនកំណត់ — រហូតដល់ ${until}`,
     creditPack: (n) => `+${n} Credit`,
     vipPack: (days) => `VIP ${days} ថ្ងៃ · មិនកំណត់`,
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
-    chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
+    chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
-      `💳 ${pkg} — $${amount}\n🎫 ${ticket} · ⏳ ៦០ នាទី\n\n` +
-      `📷 ស្កេនដោយ {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney ឬ App KHQR ណាក៏បាន\n` +
-      `💡 ទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
-      `✅ បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
+      `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} ៦០ នាទី\n\n` +
+      `{:camera:} ស្កេនដោយ {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney ឬ App KHQR ណាក៏បាន\n` +
+      `{:bulb:} ទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
+      `{:ok:} បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
     cancel: "❌ បោះបង់",
     cancelled: "បានបោះបង់ការបញ្ជាទិញ។",
-    screenshotReceived: "✅ ទទួលបាន screenshot។ កំពុងរង់ចាំការបញ្ជាក់ — ជាធម្មតាតិចជាងពីរបីនាទី។",
-    noPendingOrder: "មិនមានការបញ្ជាទិញកំពុងរង់ចាំទេ។ ចុច 💎 ទិញ ដើម្បីចាប់ផ្ដើម។",
-    grantedCredit: (n, left) => `🎉 ការទូទាត់បានបញ្ជាក់! +${n} Credit\n{:credit:} Credit នៅសល់៖ ${left}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
-    grantedVip: (until) => `🎉 ការទូទាត់បានបញ្ជាក់!\n👑 VIP មិនកំណត់ — រហូតដល់ ${until}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
-    rejected: "❌ ការទូទាត់មិនត្រូវបានបញ្ជាក់ទេ។ បើអ្នកបានបង់ពិតប្រាកដ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
+    screenshotReceived: "{:ok:} ទទួលបាន screenshot។ កំពុងរង់ចាំការបញ្ជាក់ — ជាធម្មតាតិចជាងពីរបីនាទី។",
+    noPendingOrder: "មិនមានការបញ្ជាទិញកំពុងរង់ចាំទេ។ ចុច {:diamond:} ទិញ ដើម្បីចាប់ផ្ដើម។",
+    grantedCredit: (n, left) => `{:party:} ការទូទាត់បានបញ្ជាក់! +${n} Credit\n{:credit:} Credit នៅសល់៖ ${left}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
+    grantedVip: (until) => `{:party:} ការទូទាត់បានបញ្ជាក់!\n{:m_pro:} VIP មិនកំណត់ — រហូតដល់ ${until}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
+    rejected: "{:fail:} ការទូទាត់មិនត្រូវបានបញ្ជាក់ទេ។ បើអ្នកបានបង់ពិតប្រាកដ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
   },
   en: {
     creditScreen: (standing) =>
       `{:credit:} Your Credit\n${standing}\n\n` +
       `📌 1 Credit = 1 private Telegram video\n` +
-      `♾ YouTube · FB · IG · TikTok — free, no Credit used\n\n` +
+      `{:m_free:} YouTube · FB · IG · TikTok — free, no Credit used\n\n` +
       `{:m_buy:} Choose a package:`,
     creditLine: (bar, left, total) => `${bar}  ${left} / ${total} Credit left`,
-    premiumLine: (until) => `👑 VIP unlimited — until ${until}`,
+    premiumLine: (until) => `{:m_pro:} VIP unlimited — until ${until}`,
     creditPack: (n) => `+${n} Credit`,
     vipPack: (days) => `VIP ${days} days · unlimited`,
     notReady: "Payments aren't set up yet. Please contact the operator.",
-    chooseBank: (pkg, amount) => `💳 ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
+    chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
-      `💳 ${pkg} — $${amount}\n🎫 ${ticket} · ⏳ 60 min\n\n` +
-      `📷 Scan with {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney or any KHQR app\n` +
-      `💡 Same phone: long-press the picture → save → open it in your bank app\n` +
-      `✅ Paid? Send the receipt screenshot here`,
+      `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} 60 min\n\n` +
+      `{:camera:} Scan with {:aba:} ABA · {:bakong:} Bakong · {:wing:} Wing · {:truemoney:} TrueMoney or any KHQR app\n` +
+      `{:bulb:} Same phone: long-press the picture → save → open it in your bank app\n` +
+      `{:ok:} Paid? Send the receipt screenshot here`,
     cancel: "❌ Cancel",
     cancelled: "Order cancelled.",
-    screenshotReceived: "✅ Screenshot received. Waiting for confirmation — usually a few minutes.",
-    noPendingOrder: "You have no pending order. Tap 💎 Buy to start.",
-    grantedCredit: (n, left) => `🎉 Payment confirmed! +${n} Credit\n{:credit:} Credit left: ${left}\n\nThank you! Send a Telegram link any time.`,
-    grantedVip: (until) => `🎉 Payment confirmed!\n👑 VIP unlimited — until ${until}\n\nThank you! Send a Telegram link any time.`,
-    rejected: "❌ The payment couldn't be confirmed. If you really paid, please contact the operator.",
+    screenshotReceived: "{:ok:} Screenshot received. Waiting for confirmation — usually a few minutes.",
+    noPendingOrder: "You have no pending order. Tap {:diamond:} Buy to start.",
+    grantedCredit: (n, left) => `{:party:} Payment confirmed! +${n} Credit\n{:credit:} Credit left: ${left}\n\nThank you! Send a Telegram link any time.`,
+    grantedVip: (until) => `{:party:} Payment confirmed!\n{:m_pro:} VIP unlimited — until ${until}\n\nThank you! Send a Telegram link any time.`,
+    rejected: "{:fail:} The payment couldn't be confirmed. If you really paid, please contact the operator.",
   },
 };
 const t = (language) => L[language] ?? L.km;
@@ -168,7 +168,7 @@ function packageLabel(pkg, language) {
 // ----------------------------------------------------------------- flows
 
 /**
- * "💲 Add Credit": the balance (or VIP), what one Credit buys, then one
+ * "{:credit:} Add Credit": the balance (or VIP), what one Credit buys, then one
  * button per package -- a Credit pack with the Credit icon, VIP with the crown.
  */
 export async function showPackages(chatId, user, quota) {
@@ -183,7 +183,7 @@ export async function showPackages(chatId, user, quota) {
     reply_markup: {
       inline_keyboard: list.map((pkg) => [
         {
-          text: `${pkg.downloads ? "💲" : "👑"} ${packageLabel(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`,
+          text: `${pkg.downloads ? "{:credit:}" : "{:m_pro:}"} ${packageLabel(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`,
           emoji: pkg.downloads ? "credit" : "m_pro",
           callback_data: `bot:buy:${pkg.id}`,
         },
@@ -306,7 +306,7 @@ async function grant(order, confirmedBy, bankHash = null) {
       if (config.telegramAdminChatId) {
         await call("sendMessage", {
           chat_id: config.telegramAdminChatId,
-          text: `⚠️ KH Invoice activation failed for paid order ${order.ticket} (user ${order.telegram_user_id}): ${String(err?.message ?? err).slice(0, 300)}\nRetry with /invactivate ${order.ticket}`,
+          text: `{:warn:} KH Invoice activation failed for paid order ${order.ticket} (user ${order.telegram_user_id}): ${String(err?.message ?? err).slice(0, 300)}\nRetry with /invactivate ${order.ticket}`,
         });
       }
     }
@@ -387,8 +387,8 @@ export async function handlePhoto(message, user) {
         `Ticket: ${order.ticket}`,
       reply_markup: {
         inline_keyboard: [[
-          { text: "✅ Approve", emoji: "ok", callback_data: `bot:pay_ok:${order.id}` },
-          { text: "❌ Reject", emoji: "fail", callback_data: `bot:pay_no:${order.id}` },
+          { text: "{:ok:} Approve", emoji: "ok", callback_data: `bot:pay_ok:${order.id}` },
+          { text: "{:fail:} Reject", emoji: "fail", callback_data: `bot:pay_no:${order.id}` },
         ]],
       },
     });
@@ -400,12 +400,12 @@ async function saveQrFromPhoto(chatId, fileId, slot) {
   try {
     const payload = decodeQr(await fetchTelegramFile(fileId));
     if (!payload) {
-      await call("sendMessage", { chat_id: chatId, text: "❌ No QR code found in that photo. Send a clear, uncropped screenshot of your KHQR." });
+      await call("sendMessage", { chat_id: chatId, text: "{:fail:} No QR code found in that photo. Send a clear, uncropped screenshot of your KHQR." });
       return;
     }
     await saveTemplate(chatId, payload, slot);
   } catch (err) {
-    await call("sendMessage", { chat_id: chatId, text: `❌ Couldn't read that photo: ${String(err?.message ?? err).slice(0, 200)}` });
+    await call("sendMessage", { chat_id: chatId, text: `{:fail:} Couldn't read that photo: ${String(err?.message ?? err).slice(0, 200)}` });
   }
 }
 
@@ -419,7 +419,7 @@ const TEMPLATE_PROBLEMS = {
 async function saveTemplate(chatId, payload, slot = "primary") {
   const valid = validateKhqrTemplate(payload);
   if (!valid.ok) {
-    await call("sendMessage", { chat_id: chatId, text: `❌ Can't use this QR: ${TEMPLATE_PROBLEMS[valid.reason] ?? valid.reason}` });
+    await call("sendMessage", { chat_id: chatId, text: `{:fail:} Can't use this QR: ${TEMPLATE_PROBLEMS[valid.reason] ?? valid.reason}` });
     return;
   }
   if (slot === "alt") {
@@ -427,7 +427,7 @@ async function saveTemplate(chatId, payload, slot = "primary") {
     await call("sendMessage", {
       chat_id: chatId,
       text:
-        "✅ Second bank QR saved (ACLEDA). Payers now choose ABA or ACLEDA; the ACLEDA QR carries the service name " +
+        "{:ok:} Second bank QR saved (ACLEDA). Payers now choose ABA or ACLEDA; the ACLEDA QR carries the service name " +
         "(KH Invoice Pro / SaveIt Pro). /qrstatus shows both, /setqr2 off removes it.",
     });
     return;
@@ -435,7 +435,7 @@ async function saveTemplate(chatId, payload, slot = "primary") {
   await db().from("bot_settings").update({ khqr_template: valid.payload, updated_at: nowIso() }).eq("id", 1);
   await call("sendMessage", {
     chat_id: chatId,
-    text: "✅ Payment QR saved. Every order now gets this QR with its own exact amount. Tap 💎 to try it.",
+    text: "{:ok:} Payment QR saved. Every order now gets this QR with its own exact amount. Tap {:diamond:} to try it.",
   });
 }
 
@@ -461,7 +461,7 @@ async function qrStatus(chatId) {
 export async function handleAdminPayCommand(chatId, text) {
   if (!isAdminChat(chatId)) return false;
   if (/^\/makeemoji$/i.test(text)) {
-    await call("sendMessage", { chat_id: chatId, text: "⏳ Building the custom emoji pack…" });
+    await call("sendMessage", { chat_id: chatId, text: "{:wait:} Building the custom emoji pack…" });
     await call("sendMessage", { chat_id: chatId, text: await buildPack(chatId) });
     return true;
   }
@@ -471,7 +471,7 @@ export async function handleAdminPayCommand(chatId, text) {
   }
   if (/^\/setqr2\s+off$/i.test(text)) {
     await savePaymentSettings({ alt_template: null });
-    await call("sendMessage", { chat_id: chatId, text: "✅ Second bank removed — only bank 1 is offered now." });
+    await call("sendMessage", { chat_id: chatId, text: "{:ok:} Second bank removed — only bank 1 is offered now." });
     return true;
   }
   const setKhqr = /^\/setqr(2)?\s+(\S+)$/i.exec(text);
@@ -497,9 +497,9 @@ export async function handleAdminPayCommand(chatId, text) {
     try {
       const until = await khInvoice.activatePlan(order, user ?? { telegram_user_id: order.telegram_user_id });
       await call("sendMessage", { chat_id: order.chat_id, text: khInvoice.grantedText(user?.language, until) });
-      await call("sendMessage", { chat_id: chatId, text: `✅ Activated until ${String(until).slice(0, 10)}.` });
+      await call("sendMessage", { chat_id: chatId, text: `{:ok:} Activated until ${String(until).slice(0, 10)}.` });
     } catch (err) {
-      await call("sendMessage", { chat_id: chatId, text: `❌ ${String(err?.message ?? err).slice(0, 300)}` });
+      await call("sendMessage", { chat_id: chatId, text: `{:fail:} ${String(err?.message ?? err).slice(0, 300)}` });
     }
     return true;
   }
@@ -555,12 +555,12 @@ export async function handlePayCallback(cq, user) {
     let verdict;
     if (kind === "pay_ok") {
       await grant(order, "operator");
-      verdict = "✅ APPROVED";
+      verdict = "{:ok:} APPROVED";
     } else {
       await db().from("bot_orders").update({ status: "rejected", confirmed_by: "operator" }).eq("id", order.id).eq("status", "pending");
       const [payer] = rows(await db().from("bot_users").select("language").eq("telegram_user_id", order.telegram_user_id).limit(1));
       await call("sendMessage", { chat_id: order.chat_id, text: t(payer?.language).rejected });
-      verdict = "❌ REJECTED";
+      verdict = "{:fail:} REJECTED";
     }
     await call("answerCallbackQuery", { callback_query_id: cq.id, text: verdict });
     await call("editMessageCaption", {
