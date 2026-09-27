@@ -267,7 +267,7 @@ async function startOrder(chatId, user, packageId, bank = null) {
   );
 
   const png = await renderKhqrCard(built.payload, { merchantName: serviceName(pkg) });
-  const keyboard = [[{ text: s.cancel, callback_data: `bot:cancel:${order.id}` }]];
+  const keyboard = [[{ text: s.cancel, emoji: "fail", callback_data: `bot:cancel:${order.id}` }]];
 
   await sendPhotoBuffer(chatId, png, s.qrCaption(packageLabel(pkg, user.language), amount.toFixed(2), ticket), {
     inline_keyboard: keyboard,
@@ -387,8 +387,8 @@ export async function handlePhoto(message, user) {
         `Ticket: ${order.ticket}`,
       reply_markup: {
         inline_keyboard: [[
-          { text: "✅ Approve", callback_data: `bot:pay_ok:${order.id}` },
-          { text: "❌ Reject", callback_data: `bot:pay_no:${order.id}` },
+          { text: "✅ Approve", emoji: "ok", callback_data: `bot:pay_ok:${order.id}` },
+          { text: "❌ Reject", emoji: "fail", callback_data: `bot:pay_no:${order.id}` },
         ]],
       },
     });
