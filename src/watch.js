@@ -35,6 +35,7 @@ import * as customEmoji from "./customEmoji.js";
 import { call } from "./notifyBot.js";
 import * as r2 from "./r2.js";
 import { scanGroup } from "./scanner.js";
+import { parseTelegramLink } from "./telegram.js";
 
 const BUCKET = "watch-catalog";
 const SHOWS_FILE = "shows.json";
@@ -370,7 +371,10 @@ export async function handleCallback(cq, user) {
  * topics with a #index for /setshow to reference. One-time setup per group.
  */
 export async function addOrScanGroup(chatId) {
-  const id = String(chatId).trim();
+  // A -100… id, an @username, or any message link copied out of the group
+  // (t.me/c/…/…) all name the same chat; store the plain id so the group
+  // isn't registered twice under two spellings.
+  const id = String(parseTelegramLink(chatId).chatId);
   let [group] = rows(await db().from("groups").select("*").eq("chat_id", id).limit(1));
   if (!group) {
     [group] = rows(await db().from("groups").insert({ chat_id: id, title: id }).select("*"));
@@ -414,3 +418,19 @@ export async function listAllTopics() {
     })
     .join("\n\n");
 }
+
+/** What /watchgroup and /setshow say when sent without (valid) arguments. */
+export const ADMIN_HELP =
+  "🎬 ការរៀបចំផ្នែក មើលរឿង (Admin)\n\n" +
+  "1️⃣ /watchgroup <link ឬ chat id>\n" +
+  "   ចុចសង្កត់សារណាមួយក្នុង Group VIP → Copy Link → ផ្ញើ៖\n" +
+  "   /watchgroup https://t.me/c/1234567890/55\n" +
+  "   (ឬ /watchgroup -1001234567890)\n" +
+  "   Bot នឹង scan Topic និង EP ទាំងអស់ដោយស្វ័យប្រវត្តិ។\n" +
+  "   ⚠️ គណនី userbot ត្រូវតែជាសមាជិក Group នោះ ហើយ Group ត្រូវបើក Topics។\n\n" +
+  "2️⃣ /shows — បង្ហាញរឿង (Topic) ទាំងអស់ ជាមួយ id របស់វា\n\n" +
+  "3️⃣ /setshow <topic id> <anime|donghua|movie> [ongoing|completed] [credit]\n" +
+  "   ផ្ញើជា caption លើរូប poster (forward ពី @AnimetioMini_bot ក៏បាន)\n" +
+  "   → poster ក្លាយជា emoji របស់រឿងនោះ\n" +
+  "   ឧ. /setshow 9f2c…e1 anime ongoing\n\n" +
+  "ចំណាំ៖ ដើម្បីផ្ញើ EP ពី Group ត្រូវកំណត់ storage channel (/setstorage) ជាមុនសិន។";

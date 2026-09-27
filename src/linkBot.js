@@ -415,9 +415,27 @@ async function handleAdminCommand(chatId, text) {
     return true;
   }
 
-  const watchGroup = /^\/watchgroup\s+(\S+)$/i.exec(text);
+  const watchGroup = /^\/watchgroup(?:\s+(\S+))?$/i.exec(text);
   if (watchGroup) {
-    await send(chatId, await watch.addOrScanGroup(watchGroup[1]));
+    if (!watchGroup[1]) {
+      await send(chatId, watch.ADMIN_HELP);
+      return true;
+    }
+    await send(chatId, "⏳ កំពុង scan Group… (Group ធំអាចចំណាយពេលពីរបីនាទី)");
+    try {
+      await send(chatId, await watch.addOrScanGroup(watchGroup[1]));
+    } catch (err) {
+      await send(
+        chatId,
+        `⚠️ Scan មិនបាន៖ ${String(err?.message ?? err).slice(0, 200)}\n\n` +
+          "ពិនិត្យ៖ គណនី userbot ជាសមាជិក Group នោះហើយឬនៅ? link/id ត្រឹមត្រូវទេ?"
+      );
+    }
+    return true;
+  }
+
+  if (/^\/setshow\b/i.test(text) && !/^\/setshow\s+\S+\s+(anime|donghua|movie)\b/i.test(text)) {
+    await send(chatId, watch.ADMIN_HELP);
     return true;
   }
 
