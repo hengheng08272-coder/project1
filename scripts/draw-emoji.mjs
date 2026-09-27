@@ -155,8 +155,11 @@ const BLUE = ["#9BE3FF", "#46B4EC", "#2388CF"];
 const GOLD = ["#FFE9A0", "#F5BE3A", "#CF8A10"];
 const RED = ["#FFB4B4", "#F05252", "#C81E1E"];
 const PINK = ["#FFB3C6", "#F43F6E", "#BE123C"];
+const GREEN = ["#B4F5D2", "#34C77B", "#0E8F53"];
 const blue = (g, y0, y1) => grad(g, BLUE, y0, y1);
 const gold = (g, y0, y1) => grad(g, GOLD, y0, y1);
+const green = (g, y0, y1) => grad(g, GREEN, y0, y1);
+const red = (g, y0, y1) => grad(g, RED, y0, y1);
 
 /** A four-point glint. */
 function glint(g, x, y, r, colour = "#FFFFFF") {
@@ -508,8 +511,8 @@ const wallet = (g) => {
   g.roundRect(64, 50, 24, 17, 6);
   g.fill();
 };
-const coin = (g, x, y, r = 10) => {
-  g.fillStyle = gold(g, y - r, y + r);
+const coin = (g, x, y, tone, r = 10) => {
+  g.fillStyle = tone(g, y - r, y + r);
   g.beginPath();
   g.arc(x, y, r, 0, TAU);
   g.fill();
@@ -518,30 +521,33 @@ const coin = (g, x, y, r = 10) => {
   g.arc(x, y, r - 4, 0, TAU);
   g.stroke();
 };
-// Income: a coin drops into the wallet.
+// Income and expense share one wallet, but nothing else: green in, red out,
+// so which is which reads from colour alone at the size a keyboard button
+// actually shows it, before anyone can make out an arrow's direction.
+// Income: a green coin drops into the wallet, arrow pointing down.
 icon("inv_in", (g, t) => {
   const p = ease((t % 1) / 0.55);
   g.save();
   g.beginPath();
   g.rect(0, 0, S, 40);
   g.clip();
-  coin(g, 42, -4 + 36 * p, 11);
+  coin(g, 42, -4 + 36 * p, green, 11);
   g.restore();
   wallet(g);
-  line(g, 5, blue(g, 4, 30));
+  line(g, 5, green(g, 4, 30));
   const d = 3 * Math.max(0, wave(t, 2));
   path2(g, [[74, 6 + d], [74, 26 + d]]);
   g.stroke();
   path2(g, [[67, 19 + d], [74, 26 + d], [81, 19 + d]]);
   g.stroke();
 }, { still: 0.35 });
-// Expense: a coin rises out of the wallet with an arrow.
+// Expense: a red coin rises out of the wallet, arrow pointing up.
 icon("inv_out", (g, t) => {
   const p = ease((t % 1) / 0.6);
   wallet(g);
   const fade = Math.max(0, (p - 0.7) / 0.3);
-  if (fade < 1) coin(g, 40, 30 - 22 * p, 10 * (1 - fade) + 0.01);
-  line(g, 5, blue(g, 4, 30));
+  if (fade < 1) coin(g, 40, 30 - 22 * p, red, 10 * (1 - fade) + 0.01);
+  line(g, 5, red(g, 4, 30));
   path2(g, [[74, 28], [74, 8]]);
   g.stroke();
   path2(g, [[67, 15], [74, 8], [81, 15]]);
