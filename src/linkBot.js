@@ -321,6 +321,7 @@ export async function handleMessage(message) {
   const watchButton = await watch.handleSectionButton(chatId, user, text);
   if (watchButton === "dlcredit") return botPay.showPackages(chatId, user, await quotaFor(user));
   if (watchButton) return;
+  if (await watch.handleListButton(chatId, user, text)) return;
 
   const action = actionForLabel(text) ?? commandAction(text);
   if (action) {

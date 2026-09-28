@@ -51,9 +51,11 @@ const MENU = [
     action: "watch",
     emoji: "video",
     style: "primary",
-    km: "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)",
-    en: "🎬 Khmer-dubbed Shows (for sale)",
-    aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ", "🎬 Khmer-dubbed Shows", "🎬 Watch"],
+    km: "🎬 រឿងនិយាយខ្មែរ",
+    en: "🎬 Khmer-dubbed Shows",
+    // The "(for sale)" clarifier lives in the section's own home text now --
+    // it made the main-menu button wrap to two lines on a phone.
+    aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)", "🎬 Khmer-dubbed Shows (for sale)", "🎬 Watch"],
   },
   { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
