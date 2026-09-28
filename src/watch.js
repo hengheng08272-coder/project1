@@ -330,15 +330,79 @@ async function showsInKind(kind) {
 export async function showGenres(chatId, user, cq = null) {
   const t = tx(user?.language);
   const w = await walletFor(user?.telegram_user_id);
-  const keyboard = [
-    ...SHOWN_KINDS.map((kind) => [
-      { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][user?.language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind], callback_data: `watch:kind:${kind}:0` },
-    ]),
-    [{ text: t.topUp, emoji: "credit", callback_data: "watch:topup" }],
-    [{ text: t.dlCredit, emoji: "dl", callback_data: "watch:dlcredit" }],
-    [{ text: t.mainMenu, emoji: "inv_back", callback_data: "watch:exit" }],
+  // The home screen's own actions live on the bottom keyboard now (like
+  // "the buttons below" the operator asked for), not as inline chat
+  // buttons -- so entering it always clears whatever inline screen was
+  // open (a show or kind list) and sends a fresh message.
+  if (cq) await clearScreen(cq);
+  await call("sendMessage", {
+    chat_id: chatId,
+    text: t.home(w.credits ?? 0),
+    reply_markup: sectionKeyboard(user?.language),
+  });
+}
+
+/** The keyboard under the message box while browsing "រឿងនិយាយខ្មែរ". */
+function sectionKeyboard(language) {
+  const t = tx(language);
+  return {
+    keyboard: [
+      ...SHOWN_KINDS.map((kind) => [
+        { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind] },
+      ]),
+      [{ text: t.topUp, emoji: "credit", style: "success" }],
+      [{ text: t.dlCredit, emoji: "dl" }],
+      [{ text: t.mainMenu, emoji: "inv_back" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+// Section buttons arrive as plain text (the reply keyboard above), in
+// either language; a logo icon drops a label's own leading emoji
+// (customEmoji.js), so a tap may arrive either way.
+const SECTION_ACTIONS = new Map();
+const bareLabel = (label) => label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
+for (const language of ["km", "en"]) {
+  const t = tx(language);
+  const items = [
+    ...SHOWN_KINDS.map((kind) => [`${KIND_EMOJI[kind]} ${KIND_NAME[kind][language] ?? KIND_NAME[kind].km}`, `kind:${kind}`]),
+    [t.topUp, "topup"],
+    [t.dlCredit, "dlcredit"],
+    [t.mainMenu, "exit"],
   ];
-  await render(chatId, cq, { text: t.home(w.credits ?? 0), keyboard });
+  for (const [label, action] of items) {
+    SECTION_ACTIONS.set(label, action);
+    SECTION_ACTIONS.set(bareLabel(label), action);
+  }
+}
+
+/**
+ * A tap on the section's keyboard (a genre, Add Credit, or Back). Returns
+ * true when handled here, "dlcredit" when the caller should open the
+ * Credit-for-downloads packages instead (botPay already imports this
+ * module for grant(), so that one case is left to the caller rather than
+ * import botPay back and create a cycle).
+ */
+export async function handleSectionButton(chatId, user, text) {
+  const action = SECTION_ACTIONS.get(String(text ?? "").trim());
+  if (!action) return false;
+  viewing.delete(String(chatId)); // leaving whatever show was open, if any
+  if (action === "dlcredit") return "dlcredit";
+  if (action === "topup") {
+    await showTopUps(chatId, user);
+    return true;
+  }
+  if (action === "exit") {
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
+      reply_markup: mainKeyboard(user.language),
+    });
+    return true;
+  }
+  return showKindList(chatId, user, action.slice(5), 0, null).then(() => true);
 }
 
 async function showKindList(chatId, user, kind, page, cq, manage = false) {
