@@ -321,6 +321,7 @@ export async function handleMessage(message) {
   const action = actionForLabel(text) ?? commandAction(text);
   if (action) {
     khInvoice.cancelPending(chatId);
+    watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
@@ -359,6 +360,7 @@ export async function handleMessage(message) {
 
   const url = URL_PATTERN.exec(text)?.[0];
   if (url) khInvoice.cancelPending(chatId);
+  else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;
   if (!url) {
     await send(chatId, t.notALink, { reply_markup: mainKeyboard(user.language) });
