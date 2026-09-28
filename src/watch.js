@@ -339,7 +339,7 @@ function sectionKeyboard(language) {
   return {
     keyboard: [
       ...SHOWN_KINDS.map((kind) => [
-        { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind] },
+        { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind], style: "primary" },
       ]),
       [{ text: t.topUp, emoji: "credit", style: "success" }],
       [{ text: t.dlCredit, emoji: "dl" }],
@@ -432,14 +432,14 @@ async function showKindList(chatId, user, kind, page = 0, manage = false) {
   const list = all.slice(start, start + SHOWS_PER_PAGE);
   const keyboard = list.map((entry) => [
     manage
-      ? { text: showLabel({ ...entry, epUnit: t.epUnit }, true) }
-      : { text: showLabel({ ...entry, epUnit: t.epUnit }, false), emoji: entry.meta.poster_emoji || KIND_ICON[kind] },
+      ? { text: showLabel({ ...entry, epUnit: t.epUnit }, true), style: "danger" }
+      : { text: showLabel({ ...entry, epUnit: t.epUnit }, false), emoji: entry.meta.poster_emoji || KIND_ICON[kind], style: "primary" },
   ]);
   const nav = [];
   if (page > 0) nav.push({ text: t.prevPage, emoji: "inv_back" });
   if (start + SHOWS_PER_PAGE < all.length) nav.push({ text: t.nextPage, emoji: "inv_summary" });
   if (nav.length) keyboard.push(nav);
-  if (isAdmin(chatId)) keyboard.push([manage ? { text: t.manageDone, emoji: "ok" } : { text: t.manage }]);
+  if (isAdmin(chatId)) keyboard.push([manage ? { text: t.manageDone, emoji: "ok", style: "success" } : { text: t.manage }]);
   keyboard.push([{ text: t.back, emoji: "inv_back" }]);
 
   listSessions.set(String(chatId), { kind, page, manage });
@@ -692,7 +692,7 @@ async function showTopUps(chatId, user, cq = null, lead = null) {
   const w = await walletFor(user?.telegram_user_id);
   const list = rows(await db().from("bot_packages").select("*").like("id", `${WATCH_PACKAGE_PREFIX}%`).eq("active", true).order("sort"));
   const keyboard = list.map((pkg) => [
-    { text: user?.language === "en" ? pkg.title_en : pkg.title_km, emoji: "credit", callback_data: `bot:buy:${pkg.id}` },
+    { text: user?.language === "en" ? pkg.title_en : pkg.title_km, emoji: "credit", style: "success", callback_data: `bot:buy:${pkg.id}` },
   ]);
   keyboard.push([{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }]);
   await render(chatId, cq, { text: lead ?? t.topUpTitle(w.credits ?? 0), keyboard });

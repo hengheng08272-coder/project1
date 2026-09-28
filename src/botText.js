@@ -43,6 +43,7 @@ const MENU = [
   {
     action: "invoice",
     emoji: "inv_app",
+    style: "primary",
     km: "🧾 គ្រប់គ្រងអាជីវកម្ម",
     en: "🧾 Manage Business",
     aliases: ["🧾 KH Invoice", "🧾 KH Invoice · វិក្កយបត្រ"],
