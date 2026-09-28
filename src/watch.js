@@ -184,6 +184,8 @@ const L = {
     mainMenu: "⬅️ ម៉ឺនុយដើម",
     topUp: "💲 បញ្ចូល Credit សម្រាប់ទិញវីដេអូ EP",
     dlCredit: "📥 បញ្ចូល Credit សម្រាប់ Download Private",
+    prevPage: "◀️ ថយក្រោយ",
+    nextPage: "▶️ បន្ត",
     manage: "🙈 លាក់រឿង (Admin)",
     manageDone: "✅ រួចរាល់",
     manageHint: "\n\n{:warn:} Admin: ចុចលើរឿងណាមួយ ដើម្បីលាក់វា។",
@@ -228,6 +230,8 @@ const L = {
     mainMenu: "⬅️ Main menu",
     topUp: "💲 Add Credit to buy episodes",
     dlCredit: "📥 Add Credit for Private Downloads",
+    prevPage: "◀️ Previous",
+    nextPage: "▶️ Next",
     manage: "🙈 Hide shows (Admin)",
     manageDone: "✅ Done",
     manageHint: "\n\n{:warn:} Admin: tap a show to hide it.",
@@ -245,19 +249,6 @@ const SHOWS_PER_PAGE = 3; // three shows at a time, then ▶️ for the next
 
 const pad = (n) => String(n).padStart(2, "0");
 const isAdmin = (chatId) => Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
-
-/** ⏮ ◀️ [page/pages] ▶️ ⏭ -- only the arrows that go somewhere. */
-function pageNav(prefix, page, pages, suffix = "") {
-  if (pages <= 1) return [];
-  const to = (p) => `${prefix}:${p}${suffix}`;
-  const row = [];
-  if (page > 1) row.push({ text: "⏮", callback_data: to(0) });
-  if (page > 0) row.push({ text: "◀️", callback_data: to(page - 1) });
-  row.push({ text: `${page + 1}/${pages}`, callback_data: "watch:noop" });
-  if (page < pages - 1) row.push({ text: "▶️", callback_data: to(page + 1) });
-  if (page < pages - 2) row.push({ text: "⏭", callback_data: to(pages - 1) });
-  return [row];
-}
 
 // ------------------------------------------------------------ screens
 
@@ -364,6 +355,8 @@ function sectionKeyboard(language) {
 // (customEmoji.js), so a tap may arrive either way.
 const SECTION_ACTIONS = new Map();
 const bareLabel = (label) => label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
+/** Matches a tapped reply-keyboard button against a known label, either way. */
+const hits = (trimmed, bare, label) => trimmed === label || bare === bareLabel(label);
 for (const language of ["km", "en"]) {
   const t = tx(language);
   const items = [
@@ -402,45 +395,100 @@ export async function handleSectionButton(chatId, user, text) {
     });
     return true;
   }
-  return showKindList(chatId, user, action.slice(5), 0, null).then(() => true);
+  return showKindList(chatId, user, action.slice(5)).then(() => true);
 }
 
-async function showKindList(chatId, user, kind, page, cq, manage = false) {
+// Show lists are drawn on the bottom keyboard, not as chat buttons -- a
+// reply-keyboard button carries only its label text (no id), so a tap is
+// matched back against this page recomputed fresh from the same data.
+const listSessions = new Map();
+
+function showLabel(entry, manage) {
+  return manage
+    ? `🙈 ${entry.topic.title}`
+    : `🎬 ${entry.topic.title} · ${entry.topic.total_episodes} ${entry.epUnit}${entry.meta.status === "completed" ? " ✅" : ""}`;
+}
+
+async function showKindList(chatId, user, kind, page = 0, manage = false) {
   const t = tx(user.language);
-  if (!KINDS.includes(kind)) return showGenres(chatId, user, cq);
+  if (!KINDS.includes(kind)) return showGenres(chatId, user);
   const all = await showsInKind(kind);
-  const back = [{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }];
-  if (!all.length) return render(chatId, cq, { text: t.noShows(kind), keyboard: [back] });
+  if (!all.length) {
+    listSessions.delete(String(chatId));
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: t.noShows(kind),
+      reply_markup: { keyboard: [[{ text: t.back, emoji: "inv_back" }]], resize_keyboard: true },
+    });
+    return;
+  }
 
   const pages = Math.ceil(all.length / SHOWS_PER_PAGE);
   page = Math.min(Math.max(page, 0), pages - 1);
-  const start = page * SHOWS_PER_PAGE;
-  const list = all.slice(start, start + SHOWS_PER_PAGE);
   // Manage mode (operator only): the same list, but a tap hides the show --
   // for topics that aren't really shows (a season sub-topic, a chat thread).
   manage = manage && isAdmin(chatId);
-  const keyboard = list.map(({ topic, meta }) => [
+  const start = page * SHOWS_PER_PAGE;
+  const list = all.slice(start, start + SHOWS_PER_PAGE);
+  const keyboard = list.map((entry) => [
     manage
-      ? { text: `🙈 ${topic.title}`, callback_data: `watch:hide:${topic.id}:${page}` }
-      : {
-          text: `🎬 ${topic.title} · ${topic.total_episodes} ${t.epUnit}${meta.status === "completed" ? " ✅" : ""}`,
-          emoji: meta.poster_emoji || KIND_ICON[kind],
-          callback_data: `watch:show:${topic.id}:0:${page}`,
-        },
+      ? { text: showLabel({ ...entry, epUnit: t.epUnit }, true) }
+      : { text: showLabel({ ...entry, epUnit: t.epUnit }, false), emoji: entry.meta.poster_emoji || KIND_ICON[kind] },
   ]);
-  keyboard.push(...pageNav(`watch:kind:${kind}`, page, pages, manage ? ":m" : ""));
-  if (isAdmin(chatId)) {
-    keyboard.push([
-      manage
-        ? { text: t.manageDone, emoji: "ok", callback_data: `watch:kind:${kind}:${page}` }
-        : { text: t.manage, callback_data: `watch:kind:${kind}:${page}:m` },
-    ]);
-  }
-  keyboard.push(back);
-  await render(chatId, cq, {
+  const nav = [];
+  if (page > 0) nav.push({ text: t.prevPage, emoji: "inv_back" });
+  if (start + SHOWS_PER_PAGE < all.length) nav.push({ text: t.nextPage, emoji: "inv_summary" });
+  if (nav.length) keyboard.push(nav);
+  if (isAdmin(chatId)) keyboard.push([manage ? { text: t.manageDone, emoji: "ok" } : { text: t.manage }]);
+  keyboard.push([{ text: t.back, emoji: "inv_back" }]);
+
+  listSessions.set(String(chatId), { kind, page, manage });
+  await call("sendMessage", {
+    chat_id: chatId,
     text: t.showList(kind, all.length, start + 1, start + list.length) + (manage ? t.manageHint : ""),
-    keyboard,
+    reply_markup: { keyboard, resize_keyboard: true, is_persistent: true },
   });
+}
+
+/**
+ * A tap while a show list is open (a show, a page arrow, the hide toggle,
+ * or back). Returns true when handled.
+ */
+export async function handleListButton(chatId, user, text) {
+  const session = listSessions.get(String(chatId));
+  if (!session) return false;
+  const t = tx(user.language);
+  const trimmed = String(text ?? "").trim();
+  const bare = bareLabel(trimmed);
+  const is = (label) => hits(trimmed, bare, label);
+
+  if (is(t.back)) {
+    listSessions.delete(String(chatId));
+    await showGenres(chatId, user);
+    return true;
+  }
+  if (is(t.prevPage)) return showKindList(chatId, user, session.kind, session.page - 1, session.manage).then(() => true);
+  if (is(t.nextPage)) return showKindList(chatId, user, session.kind, session.page + 1, session.manage).then(() => true);
+  if (isAdmin(chatId) && is(t.manage)) return showKindList(chatId, user, session.kind, session.page, true).then(() => true);
+  if (isAdmin(chatId) && is(t.manageDone)) return showKindList(chatId, user, session.kind, session.page, false).then(() => true);
+
+  const all = await showsInKind(session.kind);
+  const pages = Math.max(1, Math.ceil(all.length / SHOWS_PER_PAGE));
+  const page = Math.min(Math.max(session.page, 0), pages - 1);
+  const start = page * SHOWS_PER_PAGE;
+  for (const entry of all.slice(start, start + SHOWS_PER_PAGE)) {
+    if (!is(showLabel({ ...entry, epUnit: t.epUnit }, session.manage))) continue;
+    if (session.manage) {
+      const saved = await saveShowMeta(entry.topic.id, { on_sale: false });
+      await call("sendMessage", { chat_id: chatId, text: t.hidden });
+      await showKindList(chatId, user, saved.kind, page, true);
+    } else {
+      listSessions.delete(String(chatId));
+      await showEpisodeList(chatId, user, entry.topic.id, page);
+    }
+    return true;
+  }
+  return false;
 }
 
 /** A show's episodes, numbered and in order, whatever the scan stored. */
@@ -471,14 +519,22 @@ export function cancelPending(chatId) {
  * A show: its poster, EP range, price and balance -- no grid of episode
  * buttons; the buyer types the EP they want (see handleText).
  */
-async function showEpisodeList(chatId, user, topicId, _page, listPage, cq) {
+async function showEpisodeList(chatId, user, topicId, listPage = 0) {
   const t = tx(user.language);
   const [topic] = rows(await db().from("topics").select("id, title").eq("id", topicId).limit(1));
-  if (!topic) return showGenres(chatId, user, cq);
+  if (!topic) return showGenres(chatId, user);
   const meta = (await showMeta())[topicId] ?? {};
-  const back = [{ text: t.back, emoji: "inv_back", callback_data: `watch:kind:${meta.kind}:${listPage}` }];
+  const backRow = [{ text: t.back, emoji: "inv_back" }];
   const episodes = await orderedEpisodes(topicId);
-  if (!episodes.length) return render(chatId, cq, { text: t.noEpisodes(topic.title), keyboard: [back] });
+  if (!episodes.length) {
+    viewing.delete(String(chatId));
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: t.noEpisodes(topic.title),
+      reply_markup: { keyboard: [backRow], resize_keyboard: true },
+    });
+    return;
+  }
 
   const w = await walletFor(user.telegram_user_id);
   const numbered = episodes.filter((ep) => ep.num != null);
@@ -487,9 +543,9 @@ async function showEpisodeList(chatId, user, topicId, _page, listPage, cq) {
   const ownedLabels = episodes.filter((ep) => w.bought?.[ep.id]).map((ep) => ep.label);
   const owned = ownedLabels.length > 12 ? `${ownedLabels.slice(0, 12).join(", ")} … (+${ownedLabels.length - 12})` : ownedLabels.join(", ");
 
-  const keyboard = [[{ text: t.topUp, emoji: "credit", style: "success", callback_data: "watch:topup" }]];
-  if (isAdmin(chatId)) keyboard.push([{ text: t.posterBtn, emoji: "camera", callback_data: `watch:poster:${topicId}` }]);
-  keyboard.push(back);
+  const keyboard = [[{ text: t.topUp, emoji: "credit", style: "success" }]];
+  if (isAdmin(chatId)) keyboard.push([{ text: t.posterBtn, emoji: "camera" }]);
+  keyboard.push(backRow);
   const text = t.epScreen({
     title: topic.title,
     count: episodes.length,
@@ -501,21 +557,50 @@ async function showEpisodeList(chatId, user, topicId, _page, listPage, cq) {
     owned,
     example: numbered.length > 2 ? `${numbered[0].label}-${numbered[2].label}` : first,
   });
-  const messageId = await render(chatId, cq, { photo: meta.poster_file_id ?? null, text, keyboard });
-  viewing.set(String(chatId), { topicId, listPage, messageId, at: Date.now() });
+  const reply_markup = { keyboard, resize_keyboard: true, is_persistent: true };
+  let messageId;
+  if (meta.poster_file_id && text.length <= 1024) {
+    const sent = await call("sendPhoto", { chat_id: chatId, photo: meta.poster_file_id, caption: text, reply_markup });
+    messageId = sent?.result?.message_id;
+  }
+  if (!messageId) {
+    const sent = await call("sendMessage", { chat_id: chatId, text, reply_markup });
+    messageId = sent?.result?.message_id;
+  }
+  viewing.set(String(chatId), { topicId, kind: meta.kind, listPage, messageId, at: Date.now() });
 }
 
 /**
- * Text typed while a show is open: an EP number or a range. Returns true
- * when it was one (handled), false to let the rest of the bot see it.
+ * Text typed while a show is open: its own keyboard buttons (Back, Add
+ * Credit, Set poster), or an EP number/range to buy. Returns true when
+ * handled, false to let the rest of the bot see it.
  */
 export async function handleText(chatId, user, text) {
   const open = viewing.get(String(chatId));
   if (!open || Date.now() - open.at > VIEW_MS) return false;
-  const src = String(text ?? "").replace(/[\u17E0-\u17E9]/g, (d) => String(d.charCodeAt(0) - 0x17e0)).trim();
+  const t = tx(user.language);
+  const trimmed = String(text ?? "").trim();
+  const bare = bareLabel(trimmed);
+
+  if (hits(trimmed, bare, t.back)) {
+    viewing.delete(String(chatId));
+    await showKindList(chatId, user, open.kind, open.listPage);
+    return true;
+  }
+  if (hits(trimmed, bare, t.topUp)) {
+    await showTopUps(chatId, user);
+    return true;
+  }
+  if (isAdmin(chatId) && hits(trimmed, bare, t.posterBtn)) {
+    const [topic] = rows(await db().from("topics").select("title").eq("id", open.topicId).limit(1));
+    pendingPoster.set(String(chatId), open.topicId);
+    await call("sendMessage", { chat_id: chatId, text: t.posterAsk(topic?.title ?? "") });
+    return true;
+  }
+
+  const src = trimmed.replace(/[០-៩]/g, (d) => String(d.charCodeAt(0) - 0x17e0));
   const m = /^(?:ep\s*)?0*(\d{1,4})(?:\s*(?:-|–|ដល់|to)\s*(?:ep\s*)?0*(\d{1,4}))?$/i.exec(src);
   if (!m) return false;
-  const t = tx(user.language);
   const lo = Number(m[1]);
   const hi = m[2] ? Number(m[2]) : lo;
   const episodes = await orderedEpisodes(open.topicId);
@@ -543,7 +628,7 @@ export async function handleText(chatId, user, text) {
   // The show screen moves under the new video(s), balance updated.
   if (sent) {
     if (open.messageId) await call("deleteMessage", { chat_id: chatId, message_id: open.messageId }).catch(() => {});
-    await showEpisodeList(chatId, user, open.topicId, 0, open.listPage, null);
+    await showEpisodeList(chatId, user, open.topicId, open.listPage);
   }
   return true;
 }
@@ -635,13 +720,14 @@ export async function handleCallback(cq, user) {
     if (!ep) return true;
     const label = (await orderedEpisodes(ep.topic_id)).find((x) => x.id === a)?.label ?? "";
     await purchase(chatId, user, a, label);
-    await showEpisodeList(chatId, user, ep.topic_id, 0, num(c), null);
+    await showEpisodeList(chatId, user, ep.topic_id, num(c));
     return true;
   }
   if (action === "hide" && isAdmin(chatId)) {
     const saved = await saveShowMeta(a, { on_sale: false });
     await call("answerCallbackQuery", { callback_query_id: cq.id, text: tx(user.language).hidden });
-    await showKindList(chatId, user, saved.kind, num(b), cq, true);
+    await clearScreen(cq);
+    await showKindList(chatId, user, saved.kind, num(b), true);
     return true;
   }
   if (action === "poster" && isAdmin(chatId)) {
@@ -654,9 +740,13 @@ export async function handleCallback(cq, user) {
   await call("answerCallbackQuery", { callback_query_id: cq.id }).catch(() => {});
   if (action === "home") await showGenres(chatId, user, cq);
   else if (action === "topup") await showTopUps(chatId, user, cq);
-  else if (action === "kind") await showKindList(chatId, user, a, num(b), cq, c === "m");
-  else if (action === "show") await showEpisodeList(chatId, user, a, num(b), num(c), cq);
-  else if (action === "exit") {
+  else if (action === "kind") {
+    await clearScreen(cq);
+    await showKindList(chatId, user, a, num(b), c === "m");
+  } else if (action === "show") {
+    await clearScreen(cq);
+    await showEpisodeList(chatId, user, a, num(c));
+  } else if (action === "exit") {
     await clearScreen(cq);
     await call("sendMessage", {
       chat_id: chatId,
