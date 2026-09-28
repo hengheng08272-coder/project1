@@ -15,11 +15,12 @@
  * service right now, so a new column isn't an option, but Storage always
  * has been.
  *
- * Delivery is exactly botDeliver.deliverEpisode's existing forward-copy (the
- * group never needs downloading to R2 first) unless the episode row already
- * has an r2_key from the dashboard's own pipeline, in which case that link
- * is sent instead -- so either source in the request works with no new
- * delivery code.
+ * Delivery is always botDeliver.deliverEpisode's forward-copy (the group
+ * never needs downloading to R2 first) -- never an episode's own r2_key,
+ * even as a fallback: this schema is shared with an unrelated mirror-
+ * dashboard product, so a row's r2_key can be a leftover from that
+ * pipeline and point at entirely different content. A failed forward is a
+ * refund, never a guess at the right file.
  *
  * Payment: a top-up buys Watch Credit, exactly like the bot's existing
  * "Add Credit" buys downloads (bot_packages rows, KHQR, botPay.grant) --
@@ -34,7 +35,6 @@ import { db, fetchAll, rows } from "./db.js";
 import * as botDeliver from "./botDeliver.js";
 import * as customEmoji from "./customEmoji.js";
 import { call } from "./notifyBot.js";
-import * as r2 from "./r2.js";
 import { parseEpNumber, scanGroup } from "./scanner.js";
 import { parseTelegramLink } from "./telegram.js";
 
@@ -728,7 +728,7 @@ export async function handleText(chatId, user, text) {
 async function purchase(chatId, user, episodeId, label) {
   const t = tx(user.language);
   const [episode] = rows(
-    await db().from("episodes").select("id, topic_id, r2_key").eq("id", episodeId).limit(1)
+    await db().from("episodes").select("id, topic_id").eq("id", episodeId).limit(1)
   );
   if (!episode) return "missing";
   const meta = (await showMeta())[episode.topic_id] ?? {};
@@ -751,19 +751,15 @@ async function purchase(chatId, user, episodeId, label) {
   await call("sendChatAction", { chat_id: chatId, action: "upload_video" }).catch(() => {});
 
   const caption = t.delivered(topic?.title ?? "", label);
-  // A real, playable video first: Telegram copies the original post from
-  // the VIP group through the storage channel (any size, instant). An R2
-  // copy is only the fallback -- as a video when Telegram can fetch it
-  // (it only fetches files up to 20MB by URL), else as a link.
-  let delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption });
-  if (!delivered.ok && episode.r2_key) {
-    const url = await r2.urlForKey(episode.r2_key).catch(() => null);
-    if (url) {
-      const video = await call("sendVideo", { chat_id: chatId, video: url, caption, supports_streaming: true });
-      if (!video?.ok) await call("sendMessage", { chat_id: chatId, text: `${caption}\n{:link:} ${url}` });
-      delivered = { ok: true };
-    }
-  }
+  // Only ever forward the real source message: it's fetched by this
+  // episode's own group + message_id, so it can never be the wrong show.
+  // r2_key used to be tried as a fallback, but this schema is shared with
+  // an unrelated mirror-dashboard product -- a row's r2_key can be a
+  // leftover from that pipeline and point at completely different content
+  // (a customer was once delivered another show's video this way). Wrong
+  // content is worse than none, so a failed forward is now a refund, never
+  // a guess.
+  const delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption });
   if (!delivered.ok) {
     console.error(`Watch delivery failed for episode ${episode.id}: ${delivered.reason ?? "?"} ${delivered.error ?? ""}`);
     if (!already) {
@@ -773,6 +769,12 @@ async function purchase(chatId, user, episodeId, label) {
       await saveWallet(user.telegram_user_id, { ...fresh, credits: (fresh.credits ?? 0) + credits, bought });
     }
     await call("sendMessage", { chat_id: chatId, text: t.deliverFailed });
+    if (config.telegramAdminChatId && String(config.telegramAdminChatId) !== String(chatId)) {
+      await call("sendMessage", {
+        chat_id: config.telegramAdminChatId,
+        text: `⚠️ Watch delivery failed\nShow: ${topic?.title ?? episode.topic_id}\nEP: ${label}\nEpisode id: ${episode.id}\nReason: ${delivered.reason ?? "?"} ${delivered.error ?? ""}`,
+      }).catch(() => {});
+    }
     return "failed";
   }
   return "ok";
