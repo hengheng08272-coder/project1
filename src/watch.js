@@ -49,7 +49,7 @@ export const KINDS = ["anime", "donghua", "movie"];
 const KIND_LABEL = {
   anime: { km: "🎌 Anime", en: "🎌 Anime" },
   donghua: { km: "🐉 Donghua និយាយខ្មែរ", en: "🐉 Donghua (Khmer dub)" },
-  movie: { km: "🎬 ភាពយន្តនិយាយខ្មែរ", en: "🎬 Movies (Khmer dub)" },
+  movie: { km: "🎬 Khdaimond / Piphobmovie", en: "🎬 Khdaimond / Piphobmovie" },
 };
 
 const DEFAULT_PRICE_USD = 0.25;
@@ -142,7 +142,7 @@ export async function grantTopUp(userId, credits) {
 
 const L = {
   km: {
-    section: "🎬 មើលរឿង — ជ្រើសរើសប្រភេទ៖",
+    section: "🎬 រឿងនិយាយខ្មែរ — ជ្រើសរើសប្រភេទ៖",
     noShows: "😔 មិនទាន់មានរឿងក្នុងប្រភេទនេះទេ។",
     showList: (kind) => `${KIND_LABEL[kind].km}`,
     epList: (title, credits) => `🎬 ${title}\n\nមួយភាគ = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})`,
@@ -158,7 +158,7 @@ const L = {
     back: "⬅️ ត្រឡប់",
   },
   en: {
-    section: "🎬 Watch — pick a genre:",
+    section: "🎬 Khmer-dubbed Shows — pick a genre:",
     noShows: "😔 No shows in this genre yet.",
     showList: (kind) => `${KIND_LABEL[kind].en}`,
     epList: (title, credits) => `🎬 ${title}\n\n1 episode = ${credits} Credit (${"$"}${(credits * DEFAULT_PRICE_USD).toFixed(2)})`,
@@ -475,7 +475,7 @@ export async function listAllTopics() {
 
 /** What /watchgroup and /setshow say when sent without (valid) arguments. */
 export const ADMIN_HELP =
-  "🎬 ការរៀបចំផ្នែក មើលរឿង (Admin)\n\n" +
+  "🎬 ការរៀបចំផ្នែក រឿងនិយាយខ្មែរ (Admin)\n\n" +
   "1️⃣ /watchgroup <link ឬ chat id>\n" +
   "   ចុចសង្កត់សារណាមួយក្នុង Group VIP → Copy Link → ផ្ញើ៖\n" +
   "   /watchgroup https://t.me/c/1234567890/55\n" +
@@ -518,5 +518,5 @@ export async function setGroupKind(chatId, kind, status, credits) {
     };
   }
   await writeJson(SHOWS_FILE, next);
-  return `✅ ${topics.length} រឿងក្នុង «${group.title}» ដាក់លក់ជា ${kind}${status ? ` (${status})` : ""}${credits ? `, ${credits} Credit/EP` : ""}។\nអ្នកប្រើឃើញភ្លាមក្នុង 🎬 មើលរឿង។`;
+  return `✅ ${topics.length} រឿងក្នុង «${group.title}» ដាក់លក់ជា ${kind}${status ? ` (${status})` : ""}${credits ? `, ${credits} Credit/EP` : ""}។\nអ្នកប្រើឃើញភ្លាមក្នុង 🎬 រឿងនិយាយខ្មែរ។`;
 }

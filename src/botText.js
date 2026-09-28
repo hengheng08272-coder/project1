@@ -41,7 +41,7 @@ const MENU = [
     ],
   },
   { action: "invoice", emoji: "inv_app", km: "🧾 KH Invoice", en: "🧾 KH Invoice", aliases: ["🧾 KH Invoice · វិក្កយបត្រ"] },
-  { action: "watch", emoji: "video", km: "🎬 មើលរឿង", en: "🎬 Watch" },
+  { action: "watch", emoji: "video", km: "🎬 រឿងនិយាយខ្មែរ", en: "🎬 Khmer-dubbed Shows", aliases: ["🎬 មើលរឿង"] },
   { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   { action: "buy", emoji: "credit", km: "💲 បន្ថែម Credit", en: "💲 Add Credit", aliases: ["💎 ទិញ VIP", "💎 Buy VIP", "💎 ទិញ / VIP", "💎 Buy / VIP"] },
   {
