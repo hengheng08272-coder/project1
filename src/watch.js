@@ -50,8 +50,10 @@ export const KINDS = ["anime", "donghua", "movie"];
 const KIND_NAME = {
   anime: { km: "Anime", en: "Anime" },
   donghua: { km: "Donghua និយាយខ្មែរ", en: "Donghua (Khmer dub)" },
-  movie: { km: "Khdaimond / Piphobmovie", en: "Khdaimond / Piphobmovie" },
+  movie: { km: "ភាគយន្តនិយាយខ្មែរ", en: "Khmer-dubbed Movies" },
 };
+// Anime stays a valid tag (for /setshow), just not offered as a genre.
+const SHOWN_KINDS = ["donghua", "movie"];
 // The plain emoji a genre button shows, and the custom icon that takes its
 // place wherever custom emoji render.
 const KIND_EMOJI = { anime: "🎌", donghua: "🐉", movie: "🎬" };
@@ -148,7 +150,7 @@ export async function grantTopUp(userId, credits) {
 const L = {
   km: {
     home: (credits) =>
-      `{:video:} រឿងនិយាយខ្មែរ\n\n` +
+      `{:video:} រឿងនិយាយខ្មែរ (សម្រាប់លក់)\n\n` +
       `{:credit:} Watch Credit របស់អ្នក៖ ${credits}\n` +
       `{:ticket:} 1 ភាគ = 1 Credit ($${DEFAULT_PRICE_USD.toFixed(2)})\n\n` +
       `{:bulb:} ជ្រើសរើសប្រភេទរឿងខាងក្រោម៖`,
@@ -178,13 +180,19 @@ const L = {
     granted: (n, left) => `{:party:} ការទូទាត់បានបញ្ជាក់! +${n} Watch Credit\n{:credit:} Watch Credit នៅសល់៖ ${left}\n\n{:video:} ចូល រឿងនិយាយខ្មែរ ដើម្បីទិញភាគ។`,
     back: "⬅️ ត្រឡប់",
     mainMenu: "⬅️ ម៉ឺនុយដើម",
-    topUp: "💲 បន្ថែម Watch Credit",
+    topUp: "💲 បញ្ចូល Credit សម្រាប់ទិញវីដេអូ EP",
+    dlCredit: "📥 បញ្ចូល Credit សម្រាប់ Download Private",
+    manage: "🙈 លាក់រឿង (Admin)",
+    manageDone: "✅ រួចរាល់",
+    manageHint: "\n\n{:warn:} Admin: ចុចលើរឿងណាមួយ ដើម្បីលាក់វា។",
+    posterBtn: "🖼 ដាក់ Poster (Admin)",
+    posterAsk: (title) => `{:camera:} ផ្ញើរូប poster សម្រាប់ «${title}» ឥឡូវនេះ (រូបភាព មិនមែន file)។`,
     hidden: "🙈 បានលាក់រឿងនេះ",
     epUnit: "ភាគ",
   },
   en: {
     home: (credits) =>
-      `{:video:} Khmer-dubbed Shows\n\n` +
+      `{:video:} Khmer-dubbed Shows (for sale)\n\n` +
       `{:credit:} Your Watch Credit: ${credits}\n` +
       `{:ticket:} 1 episode = 1 Credit ($${DEFAULT_PRICE_USD.toFixed(2)})\n\n` +
       `{:bulb:} Pick a genre below:`,
@@ -214,7 +222,13 @@ const L = {
     granted: (n, left) => `{:party:} Payment confirmed! +${n} Watch Credit\n{:credit:} Watch Credit left: ${left}\n\n{:video:} Open Khmer-dubbed Shows to buy episodes.`,
     back: "⬅️ Back",
     mainMenu: "⬅️ Main menu",
-    topUp: "💲 Add Watch Credit",
+    topUp: "💲 Add Credit to buy episodes",
+    dlCredit: "📥 Add Credit for Private Downloads",
+    manage: "🙈 Hide shows (Admin)",
+    manageDone: "✅ Done",
+    manageHint: "\n\n{:warn:} Admin: tap a show to hide it.",
+    posterBtn: "🖼 Set poster (Admin)",
+    posterAsk: (title) => `{:camera:} Send the poster for “${title}” now (as a photo, not a file).`,
     hidden: "🙈 Show hidden",
     epUnit: "EP",
   },
@@ -308,16 +322,17 @@ export async function showGenres(chatId, user, cq = null) {
   const t = tx(user?.language);
   const w = await walletFor(user?.telegram_user_id);
   const keyboard = [
-    ...KINDS.map((kind) => [
+    ...SHOWN_KINDS.map((kind) => [
       { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][user?.language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind], callback_data: `watch:kind:${kind}:0` },
     ]),
     [{ text: t.topUp, emoji: "credit", callback_data: "watch:topup" }],
+    [{ text: t.dlCredit, emoji: "dl", callback_data: "watch:dlcredit" }],
     [{ text: t.mainMenu, emoji: "inv_back", callback_data: "watch:exit" }],
   ];
   await render(chatId, cq, { text: t.home(w.credits ?? 0), keyboard });
 }
 
-async function showKindList(chatId, user, kind, page, cq) {
+async function showKindList(chatId, user, kind, page, cq, manage = false) {
   const t = tx(user.language);
   if (!KINDS.includes(kind)) return showGenres(chatId, user, cq);
   const all = await showsInKind(kind);
@@ -328,24 +343,29 @@ async function showKindList(chatId, user, kind, page, cq) {
   page = Math.min(Math.max(page, 0), pages - 1);
   const start = page * SHOWS_PER_PAGE;
   const list = all.slice(start, start + SHOWS_PER_PAGE);
-  const admin = isAdmin(chatId);
-  const keyboard = list.map(({ topic, meta }) => {
-    const row = [
-      {
-        text: `🎬 ${topic.title} · ${topic.total_episodes} ${t.epUnit}${meta.status === "completed" ? " ✅" : ""}`,
-        emoji: meta.poster_emoji || KIND_ICON[kind],
-        callback_data: `watch:show:${topic.id}:0:${page}`,
-      },
-    ];
-    // The operator's own chat gets a hide button per show, for topics that
-    // aren't really shows (a season sub-topic, a chat thread, …).
-    if (admin) row.push({ text: "🙈", callback_data: `watch:hide:${topic.id}:${page}` });
-    return row;
-  });
-  keyboard.push(...pageNav(`watch:kind:${kind}`, page, pages));
+  // Manage mode (operator only): the same list, but a tap hides the show --
+  // for topics that aren't really shows (a season sub-topic, a chat thread).
+  manage = manage && isAdmin(chatId);
+  const keyboard = list.map(({ topic, meta }) => [
+    manage
+      ? { text: `🙈 ${topic.title}`, callback_data: `watch:hide:${topic.id}:${page}` }
+      : {
+          text: `🎬 ${topic.title} · ${topic.total_episodes} ${t.epUnit}${meta.status === "completed" ? " ✅" : ""}`,
+          emoji: meta.poster_emoji || KIND_ICON[kind],
+          callback_data: `watch:show:${topic.id}:0:${page}`,
+        },
+  ]);
+  keyboard.push(...pageNav(`watch:kind:${kind}`, page, pages, manage ? ":m" : ""));
+  if (isAdmin(chatId)) {
+    keyboard.push([
+      manage
+        ? { text: t.manageDone, emoji: "ok", callback_data: `watch:kind:${kind}:${page}` }
+        : { text: t.manage, callback_data: `watch:kind:${kind}:${page}:m` },
+    ]);
+  }
   keyboard.push(back);
   await render(chatId, cq, {
-    text: t.showList(kind, all.length, start + 1, start + list.length),
+    text: t.showList(kind, all.length, start + 1, start + list.length) + (manage ? t.manageHint : ""),
     keyboard,
   });
 }
@@ -392,7 +412,9 @@ async function showEpisodeList(chatId, user, topicId, page, listPage, cq) {
     );
   }
   keyboard.push(...pageNav(`watch:show:${topicId}`, page, pages, `:${listPage}`));
-  keyboard.push([...back, { text: t.topUp, emoji: "credit", callback_data: "watch:topup" }]);
+  keyboard.push([{ text: t.topUp, emoji: "credit", callback_data: "watch:topup" }]);
+  if (isAdmin(chatId)) keyboard.push([{ text: t.posterBtn, emoji: "camera", callback_data: `watch:poster:${topicId}` }]);
+  keyboard.push(back);
 
   const text = t.epScreen({
     title: topic.title,
@@ -419,8 +441,8 @@ async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
   }
   const meta = (await showMeta())[episode.topic_id] ?? {};
   const [topic] = rows(await db().from("topics").select("title").eq("id", episode.topic_id).limit(1));
-  const num = episode.ep_number ?? parseEpNumber(episode.title, episode.file_name);
-  const label = num != null ? pad(num) : "";
+  // Same label the list showed (EP 07, or #3 for an unnumbered one).
+  const label = (await orderedEpisodes(episode.topic_id)).find((ep) => ep.id === episodeId)?.label ?? "";
   const credits = meta.ep_credits ?? 1;
   const w = await walletFor(user.telegram_user_id);
   const already = Boolean(w.bought?.[episodeId]);
@@ -440,18 +462,19 @@ async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
   await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.delivering(label) });
 
   const caption = t.delivered(topic?.title ?? "", label);
-  let delivered = { ok: false };
-  if (episode.r2_key) {
+  // A real, playable video first: Telegram copies the original post from
+  // the VIP group through the storage channel (any size, instant). An R2
+  // copy is only the fallback -- as a video when Telegram can fetch it
+  // (it only fetches files up to 20MB by URL), else as a link.
+  let delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption });
+  if (!delivered.ok && episode.r2_key) {
     const url = await r2.urlForKey(episode.r2_key).catch(() => null);
     if (url) {
-      await call("sendMessage", { chat_id: chatId, text: `${caption}\n{:link:} ${url}` });
+      const video = await call("sendVideo", { chat_id: chatId, video: url, caption, supports_streaming: true });
+      if (!video?.ok) await call("sendMessage", { chat_id: chatId, text: `${caption}\n{:link:} ${url}` });
       delivered = { ok: true };
     }
   }
-  if (!delivered.ok) {
-    delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption });
-  }
-
   if (!delivered.ok) {
     console.error(`Watch delivery failed for episode ${episode.id}: ${delivered.reason ?? "?"} ${delivered.error ?? ""}`);
     if (!already) {
@@ -503,13 +526,20 @@ export async function handleCallback(cq, user) {
   if (action === "hide" && isAdmin(chatId)) {
     const saved = await saveShowMeta(a, { on_sale: false });
     await call("answerCallbackQuery", { callback_query_id: cq.id, text: tx(user.language).hidden });
-    await showKindList(chatId, user, saved.kind, num(b), cq);
+    await showKindList(chatId, user, saved.kind, num(b), cq, true);
+    return true;
+  }
+  if (action === "poster" && isAdmin(chatId)) {
+    const [topic] = rows(await db().from("topics").select("title").eq("id", a).limit(1));
+    pendingPoster.set(String(chatId), a);
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await call("sendMessage", { chat_id: chatId, text: tx(user.language).posterAsk(topic?.title ?? "") });
     return true;
   }
   await call("answerCallbackQuery", { callback_query_id: cq.id }).catch(() => {});
   if (action === "home") await showGenres(chatId, user, cq);
   else if (action === "topup") await showTopUps(chatId, user, cq);
-  else if (action === "kind") await showKindList(chatId, user, a, num(b), cq);
+  else if (action === "kind") await showKindList(chatId, user, a, num(b), cq, c === "m");
   else if (action === "show") await showEpisodeList(chatId, user, a, num(b), num(c), cq);
   else if (action === "exit") {
     await clearScreen(cq);
@@ -523,6 +553,23 @@ export async function handleCallback(cq, user) {
 }
 
 // ------------------------------------------------------------ admin tooling
+
+// The show whose poster the operator was just asked for (🖼 button), so the
+// next photo they send becomes it -- no /setshow and topic id to copy.
+const pendingPoster = new Map();
+
+/** The show waiting for a poster in this chat, cleared as it's read. */
+export function takePendingPoster(chatId) {
+  const topicId = pendingPoster.get(String(chatId)) ?? null;
+  pendingPoster.delete(String(chatId));
+  return topicId;
+}
+
+/** Sets a show's poster (photo + custom emoji), keeping its other settings. */
+export async function setPoster(topicId, posterBuffer, posterFileId) {
+  const meta = (await showMeta())[topicId] ?? {};
+  return setShow(topicId, meta.kind ?? "donghua", meta.status, meta.ep_credits, posterBuffer, posterFileId);
+}
 
 /**
  * Registers (or re-scans) a VIP source group by chat id, and lists its
@@ -557,7 +604,12 @@ export async function setShow(topicId, kind, status, credits, posterBuffer, post
   if (status) patch.status = status;
   if (credits) patch.ep_credits = Math.max(1, Math.round(Number(credits)));
   if (posterBuffer) {
-    patch.poster_emoji = await customEmoji.addPosterEmoji(posterBuffer);
+    // The photo alone is still worth saving if the emoji pack refuses it.
+    patch.poster_emoji = await customEmoji.addPosterEmoji(posterBuffer).catch((err) => {
+      console.error("Poster emoji failed:", err?.message ?? err);
+      return undefined;
+    });
+    if (!patch.poster_emoji) delete patch.poster_emoji;
     // The original photo's own file_id, reused as-is (no re-upload) to show
     // the real poster above a show's episode list -- Telegram keeps a
     // photo's file_id valid indefinitely once it's been sent once.

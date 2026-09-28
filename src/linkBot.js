@@ -26,7 +26,7 @@ import * as khInvoice from "./khInvoice.js";
 import * as watch from "./watch.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
-import { call } from "./notifyBot.js";
+import { call, clearScreens } from "./notifyBot.js";
 import * as r2 from "./r2.js";
 import { mediaInfo } from "./scanner.js";
 import { getClient, getClientForChat, isAuthorized, listAccounts, parseTelegramLink, TelegramBusyError } from "./telegram.js";
@@ -267,6 +267,17 @@ export async function handleMessage(message) {
   // A photo captioned /setshow, from the operator: the show's poster,
   // downloaded and turned into a custom emoji for it (see watch.setShow).
   if (message.photo && botPay.isAdminChat(chatId)) {
+    // The photo the 🖼 "Set poster" button asked for.
+    const posterFor = !message.caption ? watch.takePendingPoster(chatId) : null;
+    if (posterFor) {
+      try {
+        const fileId = message.photo[message.photo.length - 1].file_id;
+        await send(chatId, await watch.setPoster(posterFor, await fetchTelegramPhoto(fileId), fileId));
+      } catch (err) {
+        await send(chatId, `⚠️ ${err?.message ?? err}`);
+      }
+      return;
+    }
     const setShow = /^\/setshow\s+(\S+)\s+(anime|donghua|movie)(?:\s+(ongoing|completed))?(?:\s+(\d+))?$/i.exec(
       String(message.caption ?? "").trim()
     );
@@ -311,6 +322,9 @@ export async function handleMessage(message) {
   if (action) {
     khInvoice.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
+    // A new section replaces the last one: its screens and the tapped
+    // button's own message go, so only what was just asked for is shown.
+    await clearScreens(chatId, message.message_id);
   }
   switch (action) {
     case "emoji":
@@ -635,6 +649,13 @@ export async function handleCallback(cq) {
   const data = String(cq?.data ?? "");
   if (data.startsWith("inv:") && cq.from?.id) {
     return khInvoice.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data === "watch:dlcredit" && cq.from?.id) {
+    // "Credit for Private downloads" from inside the shows section: the
+    // same packages as the main menu's Credit button.
+    const user = await ensureUser(cq.from, null);
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    return botPay.showPackages(cq.message.chat.id, user, await quotaFor(user));
   }
   if (data.startsWith("watch:") && cq.from?.id) {
     return watch.handleCallback(cq, await ensureUser(cq.from, null));
