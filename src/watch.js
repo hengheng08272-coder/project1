@@ -238,7 +238,7 @@ const tx = (language) => L[language] ?? L.km;
 // Small pages on purpose: 10 episodes (5 rows of 2) and 8 shows fit on a
 // phone screen without scrolling, and stay far under Telegram's reply
 // markup size limit however big the catalog gets.
-const SHOWS_PER_PAGE = 8;
+const SHOWS_PER_PAGE = 3; // three shows at a time, then ▶️ for the next
 const EPS_PER_PAGE = 10;
 const EP_COLUMNS = 2;
 
@@ -302,7 +302,14 @@ async function clearScreen(cq) {
 }
 
 // A forum's built-in "General" topic and topics with no videos aren't shows.
-const isShowTopic = (topic) => !/^general$/i.test(String(topic.title ?? "").trim()) && (topic.total_episodes ?? 0) > 0;
+// A topic named only by a number or code ("1", "5", "S5", "EP 3") is a
+// season/sub-thread, not a show: a show's title starts with its name.
+const isShowTopic = (topic) => {
+  const title = String(topic.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  if (/^general$/i.test(title) || (topic.total_episodes ?? 0) <= 0) return false;
+  if (!/^\p{L}/u.test(title)) return false; // starts with a digit
+  return (title.match(/\p{L}/gu) ?? []).length >= 3 && !/^(s|ep|e|season|part|vol)\s*\d+$/i.test(title);
+};
 
 async function showsInKind(kind) {
   const meta = await showMeta();

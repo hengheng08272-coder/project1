@@ -50,6 +50,7 @@ const MENU = [
   {
     action: "watch",
     emoji: "video",
+    style: "primary",
     km: "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)",
     en: "🎬 Khmer-dubbed Shows (for sale)",
     aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ", "🎬 Khmer-dubbed Shows", "🎬 Watch"],
@@ -58,6 +59,7 @@ const MENU = [
   {
     action: "buy",
     emoji: "credit",
+    style: "success",
     km: "💲 បញ្ចូល Credit សម្រាប់ Download Private",
     en: "💲 Add Credit for Private Downloads",
     aliases: ["💲 បន្ថែម Credit", "💲 Add Credit", "💎 ទិញ VIP", "💎 Buy VIP", "💎 ទិញ / VIP", "💎 Buy / VIP"],
@@ -114,7 +116,8 @@ export function actionForLabel(text) {
 export function mainKeyboard(language) {
   const button = (action) => {
     const item = MENU.find((m) => m.action === action);
-    return { text: item[language] ?? item.en, emoji: item.emoji };
+    // `style` tints a few key buttons (Telegram's primary / success colours).
+    return { text: item[language] ?? item.en, emoji: item.emoji, ...(item.style ? { style: item.style } : {}) };
   };
   const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
   // Only what people use every day; history, language and help are under
