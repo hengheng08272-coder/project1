@@ -171,14 +171,14 @@ const L = {
     epHint: (first) => `{:bulb:} វាយលេខ EP ដែលចង់ទិញ ឧ. ${first}`,
     allEps: (title, count) => `{:video:} ${title} — ភាគទាំងអស់ (${count})\n${SEP}\n{:ok:} = បានទិញ   {:lock:} = មិនទាន់ទិញ`,
     noSuchShow: (n, total) => `{:warn:} មិនមានរឿងលេខ ${n} ទេ — មានលេខ 1 ដល់ ${total}។`,
-    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example }) =>
+    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example, rangeExample }) =>
       `{:video:} ${title}\n${SEP}\n` +
       `${completed ? "{:ok:} ចប់ហើយ" : "{:fire:} កំពុងចេញ"} · ${count} ភាគ\n` +
       `{:ticket:} EP ${from} ដល់ EP ${to}\n` +
       `{:credit:} 1 ភាគ = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
       `{:m_account:} Credit របស់អ្នក៖ ${balance}\n` +
       (owned ? `{:ok:} បានទិញ៖ ${owned}\n` : "") +
-      `${SEP}\n{:bulb:} វាយលេខ EP ដែលចង់ទិញ ក្នុងឆាត ឧ. ${from} ឬ ${example}`,
+      `${SEP}\n{:bulb:} វាយលេខ EP ដែលចង់ទិញ ក្នុងឆាត ឧ. ${example}${rangeExample ? ` ឬ ${rangeExample}` : ""}`,
     notFound: (want, from, to) => `{:warn:} រកមិនឃើញ EP ${want} ទេ — មាន EP ${from} ដល់ EP ${to}។`,
     tooMany: (max) => `{:warn:} ទិញបានម្ដងច្រើនបំផុត ${max} ភាគ។`,
     noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} មិនទាន់មានភាគសម្រាប់លក់ទេ។`,
@@ -228,14 +228,14 @@ const L = {
     epHint: (first) => `{:bulb:} Type the EP you want to buy, e.g. ${first}`,
     allEps: (title, count) => `{:video:} ${title} — all episodes (${count})\n${SEP}\n{:ok:} = bought   {:lock:} = not bought`,
     noSuchShow: (n, total) => `{:warn:} No show number ${n} — numbers go from 1 to ${total}.`,
-    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example }) =>
+    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example, rangeExample }) =>
       `{:video:} ${title}\n${SEP}\n` +
       `${completed ? "{:ok:} Completed" : "{:fire:} Ongoing"} · ${count} episodes\n` +
       `{:ticket:} EP ${from} to EP ${to}\n` +
       `{:credit:} 1 episode = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
       `{:m_account:} Your Credit: ${balance}\n` +
       (owned ? `{:ok:} Bought: ${owned}\n` : "") +
-      `${SEP}\n{:bulb:} Type the EP you want to buy in the chat, e.g. ${from} or ${example}`,
+      `${SEP}\n{:bulb:} Type the EP you want to buy in the chat, e.g. ${example}${rangeExample ? ` or ${rangeExample}` : ""}`,
     notFound: (want, from, to) => `{:warn:} No EP ${want} — this show has EP ${from} to EP ${to}.`,
     tooMany: (max) => `{:warn:} At most ${max} episodes at a time.`,
     noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} No episodes on sale yet.`,
@@ -571,7 +571,7 @@ async function showAllEpisodes(chatId, user, topicId) {
   const cells = episodes.map((ep) => `${w.bought?.[ep.id] ? "✅" : "🔒"} ${ep.label}`);
   const lines = [];
   for (let i = 0; i < cells.length; i += 5) lines.push(cells.slice(i, i + 5).join("   "));
-  const first = episodes[0]?.label ?? "1";
+  const first = (episodes[0]?.label ?? "1").replace(/^#/, "");
   await sendChunks(chatId, t.allEps(topic?.title ?? "", episodes.length), lines, t.epHint(first));
 }
 
@@ -614,6 +614,10 @@ async function showEpisodeList(chatId, user, topicId, listPage = 0) {
   const last = (numbered[numbered.length - 1] ?? episodes[episodes.length - 1]).label;
   const ownedLabels = episodes.filter((ep) => w.bought?.[ep.id]).map((ep) => ep.label);
   const owned = ownedLabels.length > 12 ? `${ownedLabels.slice(0, 12).join(", ")} … (+${ownedLabels.length - 12})` : ownedLabels.join(", ");
+  // What to actually TYPE to buy: real EP numbers when the source had them,
+  // else the show's own 1..N order (its label reads "#3", but a "#" doesn't
+  // parse as a number -- typing that exact hint used to buy nothing).
+  const toType = (label) => label.replace(/^#/, "");
 
   const keyboard = [
     [{ text: t.viewAllEps, emoji: "inv_summary", style: "primary" }],
@@ -630,7 +634,8 @@ async function showEpisodeList(chatId, user, topicId, listPage = 0) {
     from: first,
     to: last,
     owned,
-    example: numbered.length > 2 ? `${numbered[0].label}-${numbered[2].label}` : first,
+    example: toType(first),
+    rangeExample: numbered.length > 2 ? `${toType(numbered[0].label)}-${toType(numbered[2].label)}` : null,
   });
   const reply_markup = { keyboard, resize_keyboard: true, is_persistent: true };
   let messageId;
@@ -677,17 +682,24 @@ export async function handleText(chatId, user, text) {
     return true;
   }
 
+  // "#" too -- the hint text and a show's own EP label both show one
+  // ("#3" for a show whose source never numbered its episodes at all).
   const src = trimmed.replace(/[០-៩]/g, (d) => String(d.charCodeAt(0) - 0x17e0));
-  const m = /^(?:ep\s*)?0*(\d{1,4})(?:\s*(?:-|–|ដល់|to)\s*(?:ep\s*)?0*(\d{1,4}))?$/i.exec(src);
+  const m = /^(?:ep\s*)?#?\s*0*(\d{1,4})(?:\s*(?:-|–|ដល់|to)\s*(?:ep\s*)?#?\s*0*(\d{1,4}))?$/i.exec(src);
   if (!m) return false;
   const lo = Number(m[1]);
   const hi = m[2] ? Number(m[2]) : lo;
   const episodes = await orderedEpisodes(open.topicId);
   const numbered = episodes.filter((ep) => ep.num != null);
-  const wanted = numbered.filter((ep) => ep.num >= Math.min(lo, hi) && ep.num <= Math.max(lo, hi));
+  // A show whose source never had recognizable EP numbers ("#1", "#2", …)
+  // is bought by its position in the list instead -- otherwise nothing
+  // typed could ever match and every episode was silently unbuyable.
+  const wanted = numbered.length
+    ? numbered.filter((ep) => ep.num >= Math.min(lo, hi) && ep.num <= Math.max(lo, hi))
+    : episodes.slice(Math.max(0, Math.min(lo, hi) - 1), Math.max(lo, hi));
   // Only one copy per number (a re-upload of the same EP is still one EP).
   const seen = new Set();
-  const picks = wanted.filter((ep) => !seen.has(ep.num) && seen.add(ep.num));
+  const picks = wanted.filter((ep) => !seen.has(ep.id) && seen.add(ep.id));
   if (!picks.length) {
     const from = (numbered[0] ?? episodes[0])?.label ?? "?";
     const to = (numbered[numbered.length - 1] ?? episodes[episodes.length - 1])?.label ?? "?";
