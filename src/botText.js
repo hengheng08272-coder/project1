@@ -22,6 +22,7 @@ const MENU = [
   {
     action: "free",
     emoji: "free_all",
+    style: "success",
     km: "⬇️ Free · ទាញយកវីដេអូ",
     en: "⬇️ Free · Download videos",
     aliases: [
@@ -32,10 +33,12 @@ const MENU = [
   },
   {
     action: "premium",
-    emoji: "lock",
-    km: "🔐 Videos Private",
-    en: "🔐 Private Videos",
+    emoji: "dl",
+    style: "primary",
+    km: "📥 Telegram Private Link",
+    en: "📥 Telegram Private Link",
     aliases: [
+      "🔐 Videos Private", "🔐 Private Videos",
       "👑 Pro Telegram", "👑 Pro · Telegram · 10 ឥតគិតថ្លៃ", "👑 Pro · Telegram · 10 free",
       "👑 Premium · Telegram ឯកជន", "👑 Premium · private Telegram",
     ],
@@ -43,7 +46,6 @@ const MENU = [
   {
     action: "invoice",
     emoji: "inv_app",
-    style: "primary",
     km: "🧾 គ្រប់គ្រងអាជីវកម្ម",
     en: "🧾 Manage Business",
     aliases: ["🧾 KH Invoice", "🧾 KH Invoice · វិក្កយបត្រ"],
@@ -51,14 +53,14 @@ const MENU = [
   {
     action: "watch",
     emoji: "video",
-    style: "primary",
+    style: "danger",
     km: "🎬 រឿងនិយាយខ្មែរ",
     en: "🎬 Khmer-dubbed Shows",
     // The "(for sale)" clarifier lives in the section's own home text now --
     // it made the main-menu button wrap to two lines on a phone.
     aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)", "🎬 Khmer-dubbed Shows (for sale)", "🎬 Watch"],
   },
-  { action: "emoji", emoji: "sparkle", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
+  { action: "emoji", emoji: "sparkle", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
     action: "buy",
     emoji: "credit",
