@@ -12,16 +12,24 @@ import { getClient, listTopics, normalizeChatId } from "./telegram.js";
 // hundreds of different episodes as the same EP005. An episode with no
 // recognizable marker now gets no number (null) rather than a wrong one.
 const EP_PATTERNS = [
+  // "S05E03" / "S5_EP03" -- a filename's season+episode pair.
+  /S\d{1,2}[\s._-]*EP?[\s._-]*0*(\d{1,4})(?!\d)/i,
   /\bEP[\s._-]*0*(\d{1,4})\b/i,
+  /\bEpisode[\s._-]*0*(\d{1,4})\b/i,
   /\bE[\s._-]*0*(\d{1,4})\b/i,
   // "ភាគទី 12" -- ទី ("number") usually sits between ភាគ and the digits.
   /ភាគ(?:ទី)?[\s._-]*0*(\d{1,4})/,
 ];
 
+// Khmer captions usually write the number in Khmer digits ("ភាគទី១៩៤"),
+// which \d doesn't match -- those episodes all came out unnumbered.
+const toAsciiDigits = (text) => String(text).replace(/[០-៩]/g, (d) => String(d.charCodeAt(0) - 0x17e0));
+
 /** Pulls an episode number out of a caption or filename, best effort. */
 export function parseEpNumber(...sources) {
-  for (const text of sources) {
-    if (!text) continue;
+  for (const raw of sources) {
+    if (!raw) continue;
+    const text = toAsciiDigits(raw);
     for (const pattern of EP_PATTERNS) {
       const match = pattern.exec(text);
       if (match) {

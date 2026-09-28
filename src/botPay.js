@@ -94,8 +94,14 @@ const t = (language) => L[language] ?? L.km;
 
 /** sendPhoto with bytes (multipart) -- JSON can't carry a generated PNG. */
 async function sendPhotoBuffer(chatId, buffer, caption, replyMarkup) {
+  // A multipart body sends every "\n" in a text field as "\r\n" (FormData
+  // does this on its own), and Telegram checks entity offsets against the
+  // text as it arrives -- so every custom emoji after the first line break
+  // landed one position off and the whole caption was refused. Counting the
+  // "\r"s up front makes the offsets match what is actually sent.
+  const crlfCaption = typeof caption === "string" ? caption.replace(/\r?\n/g, "\r\n") : caption;
   const attempt = async (plain) => {
-    const body = await decorate({ caption, reply_markup: replyMarkup }, { plain });
+    const body = await decorate({ caption: crlfCaption, reply_markup: replyMarkup }, { plain });
     const form = new FormData();
     form.set("chat_id", String(chatId));
     form.set("photo", new Blob([buffer], { type: "image/png" }), "khqr.png");

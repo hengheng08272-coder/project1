@@ -12,10 +12,56 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
-import { telegramSettings } from "./db.js";
+import { db, rows, telegramSettings } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { mediaInfo } from "./scanner.js";
-import { getClient, normalizeChatId } from "./telegram.js";
+import { getClient, listAccounts, normalizeChatId } from "./telegram.js";
+
+/**
+ * getEntity, retried once after refreshing the dialog list: a channel an
+ * account joined recently isn't in its entity cache yet, and a bare -100…
+ * id then fails with CHANNEL_INVALID even though the account is a member.
+ */
+async function resolveEntity(client, chatId) {
+  try {
+    return await client.getEntity(chatId);
+  } catch {
+    await client.getDialogs({ limit: 200 }).catch(() => null);
+    return client.getEntity(chatId);
+  }
+}
+
+/**
+ * A connected account that can see both the source group and the storage
+ * channel. The source group's own account goes first -- the VIP group is
+ * joined by a different account than the default one, and always using the
+ * default account here is what made every forward fail with CHANNEL_INVALID.
+ */
+async function clientForBoth(sourceChatId, storageChatId) {
+  const candidates = [];
+  const [known] = rows(
+    await db().from("groups").select("account_id").eq("chat_id", String(sourceChatId)).limit(1)
+  );
+  if (known) candidates.push(known.account_id ?? null);
+  candidates.push(null);
+  for (const account of await listAccounts()) if (account.connected) candidates.push(account.id);
+
+  let lastErr = null;
+  for (const accountId of [...new Set(candidates)]) {
+    try {
+      const client = await getClient({ accountId });
+      const sourceEntity = await resolveEntity(client, normalizeChatId(sourceChatId));
+      const storageEntity = await resolveEntity(client, storageChatId);
+      return { client, sourceEntity, storageEntity };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    "No connected Telegram account is in both the source group and the storage channel -- " +
+      `add the account that is in the source group to the storage channel. (${lastErr?.message ?? lastErr})`
+  );
+}
 
 /** Forwards one source message into the configured storage chat. */
 export async function storeMessage(sourceChatId, messageId) {
@@ -24,10 +70,8 @@ export async function storeMessage(sourceChatId, messageId) {
     throw new Error("No Telegram storage channel is configured (Settings › Telegram).");
   }
 
-  const client = await getClient();
-  const sourceEntity = await client.getEntity(normalizeChatId(sourceChatId));
   const storageChatId = normalizeChatId(conf.storageChatId);
-  const storageEntity = await client.getEntity(storageChatId);
+  const { client, sourceEntity, storageEntity } = await clientForBoth(sourceChatId, storageChatId);
 
   const sent = await withFloodRetry(
     () => client.forwardMessages(storageEntity, { messages: [Number(messageId)], fromPeer: sourceEntity }),
@@ -50,7 +94,7 @@ export async function storeMessage(sourceChatId, messageId) {
  */
 export async function downloadStoredMessage(chatId, messageId) {
   const client = await getClient();
-  const entity = await client.getEntity(normalizeChatId(chatId));
+  const entity = await resolveEntity(client, normalizeChatId(chatId));
   const found = await withFloodRetry(() => client.getMessages(entity, { ids: Number(messageId) }), {
     label: `telegram-storage fetch ${chatId}/${messageId}`,
   });
