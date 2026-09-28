@@ -15,21 +15,7 @@ import { config } from "./config.js";
 import { db, rows, telegramSettings } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
 import { mediaInfo } from "./scanner.js";
-import { getClient, listAccounts, normalizeChatId } from "./telegram.js";
-
-/**
- * getEntity, retried once after refreshing the dialog list: a channel an
- * account joined recently isn't in its entity cache yet, and a bare -100…
- * id then fails with CHANNEL_INVALID even though the account is a member.
- */
-async function resolveEntity(client, chatId) {
-  try {
-    return await client.getEntity(chatId);
-  } catch {
-    await client.getDialogs({ limit: 200 }).catch(() => null);
-    return client.getEntity(chatId);
-  }
-}
+import { getClient, listAccounts, normalizeChatId, resolveEntity } from "./telegram.js";
 
 /**
  * A connected account that can see both the source group and the storage
