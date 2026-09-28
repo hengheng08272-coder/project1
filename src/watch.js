@@ -357,6 +357,18 @@ export async function grantedText(language, credits, user) {
   return tx(language).granted(credits, left);
 }
 
+/**
+ * Clears the button screen the user just tapped from before drawing the
+ * next one, so browsing genre -> show -> episode list leaves one screen in
+ * the chat instead of stacking every step on top of the last.
+ */
+async function clearScreen(cq) {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  if (!chatId || !messageId) return;
+  await call("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
+}
+
 /** `watch:...` callback data. Returns true when it handled the tap. */
 export async function handleCallback(cq, user) {
   const data = String(cq?.data ?? "");
@@ -368,11 +380,13 @@ export async function handleCallback(cq, user) {
 
   if (kind === "home") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await clearScreen(cq);
     await showGenres(chatId, user.language);
     return true;
   }
   if (kind === "exit") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await clearScreen(cq);
     await call("sendMessage", {
       chat_id: chatId,
       text: user.language === "en" ? "⬅️ Main menu" : "⬅️ ម៉ឺនុយដើម",
@@ -382,11 +396,13 @@ export async function handleCallback(cq, user) {
   }
   if (kind === "kind") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await clearScreen(cq);
     await showKindList(chatId, user.language, value, page);
     return true;
   }
   if (kind === "show") {
     await call("answerCallbackQuery", { callback_query_id: cq.id });
+    await clearScreen(cq);
     await showEpisodeList(chatId, user, value, page);
     return true;
   }
