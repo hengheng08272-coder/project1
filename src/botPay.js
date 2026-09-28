@@ -192,6 +192,7 @@ export async function showPackages(chatId, user, quota) {
         {
           text: `${pkg.downloads ? "{:credit:}" : "{:m_pro:}"} ${packageLabel(pkg, user.language)} — $${Number(pkg.price_usd).toFixed(2)}`,
           emoji: pkg.downloads ? "credit" : "m_pro",
+          style: "success",
           callback_data: `bot:buy:${pkg.id}`,
         },
       ]),
