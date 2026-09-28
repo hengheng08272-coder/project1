@@ -318,6 +318,10 @@ export async function handleMessage(message) {
 
   if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language))) return;
 
+  const watchButton = await watch.handleSectionButton(chatId, user, text);
+  if (watchButton === "dlcredit") return botPay.showPackages(chatId, user, await quotaFor(user));
+  if (watchButton) return;
+
   const action = actionForLabel(text) ?? commandAction(text);
   if (action) {
     khInvoice.cancelPending(chatId);
