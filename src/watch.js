@@ -29,12 +29,13 @@
  * number asked for.
  */
 import { mainKeyboard } from "./botText.js";
+import { config } from "./config.js";
 import { db, fetchAll, rows } from "./db.js";
 import * as botDeliver from "./botDeliver.js";
 import * as customEmoji from "./customEmoji.js";
 import { call } from "./notifyBot.js";
 import * as r2 from "./r2.js";
-import { scanGroup } from "./scanner.js";
+import { parseEpNumber, scanGroup } from "./scanner.js";
 import { parseTelegramLink } from "./telegram.js";
 
 const BUCKET = "watch-catalog";
@@ -46,11 +47,15 @@ export const WATCH_PACKAGE_PREFIX = "watch_";
 export const isWatchPackage = (id) => String(id ?? "").startsWith(WATCH_PACKAGE_PREFIX);
 
 export const KINDS = ["anime", "donghua", "movie"];
-const KIND_LABEL = {
-  anime: { km: "🎌 Anime", en: "🎌 Anime" },
-  donghua: { km: "🐉 Donghua និយាយខ្មែរ", en: "🐉 Donghua (Khmer dub)" },
-  movie: { km: "🎬 Khdaimond / Piphobmovie", en: "🎬 Khdaimond / Piphobmovie" },
+const KIND_NAME = {
+  anime: { km: "Anime", en: "Anime" },
+  donghua: { km: "Donghua និយាយខ្មែរ", en: "Donghua (Khmer dub)" },
+  movie: { km: "Khdaimond / Piphobmovie", en: "Khdaimond / Piphobmovie" },
 };
+// The plain emoji a genre button shows, and the custom icon that takes its
+// place wherever custom emoji render.
+const KIND_EMOJI = { anime: "🎌", donghua: "🐉", movie: "🎬" };
+const KIND_ICON = { anime: "sparkle", donghua: "fire", movie: "video" };
 
 const DEFAULT_PRICE_USD = 0.25;
 
@@ -142,56 +147,148 @@ export async function grantTopUp(userId, credits) {
 
 const L = {
   km: {
-    section: "🎬 រឿងនិយាយខ្មែរ — ជ្រើសរើសប្រភេទ៖",
-    noShows: "😔 មិនទាន់មានរឿងក្នុងប្រភេទនេះទេ។",
-    showList: (kind) => `${KIND_LABEL[kind].km}`,
-    epList: (title, credits) => `🎬 ${title}\n\nមួយភាគ = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})`,
-    locked: (n) => `🔒 EP ${n}`,
-    owned: (n) => `▶️ EP ${n}`,
-    balance: (n) => `{:credit:} Watch Credit នៅសល់៖ ${n}`,
-    needMore: (need, have) => `😔 អ្នកត្រូវការ ${need} Credit ប៉ុន្តែមាន ${have}។ សូមបន្ថែម Credit ខាងក្រោម៖`,
-    delivering: "⏳ កំពុងផ្ញើវីដេអូ…",
-    bought: (left) => `✅ បានទិញ EP នេះ! Watch Credit នៅសល់៖ ${left}`,
-    deliverFailed: "⚠️ មិនអាចផ្ញើវីដេអូនេះបានទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
-    topUpTitle: "{:credit:} បន្ថែម Watch Credit — ជ្រើសរើសកញ្ចប់៖",
-    granted: (n, left) => `🎉 ការទូទាត់បានបញ្ជាក់! +${n} Watch Credit\n{:credit:} Watch Credit នៅសល់៖ ${left}`,
+    home: (credits) =>
+      `{:video:} រឿងនិយាយខ្មែរ\n\n` +
+      `{:credit:} Watch Credit របស់អ្នក៖ ${credits}\n` +
+      `{:ticket:} 1 ភាគ = 1 Credit ($${DEFAULT_PRICE_USD.toFixed(2)})\n\n` +
+      `{:bulb:} ជ្រើសរើសប្រភេទរឿងខាងក្រោម៖`,
+    noShows: (kind) => `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].km}\n\n{:warn:} មិនទាន់មានរឿងក្នុងប្រភេទនេះទេ។`,
+    showList: (kind, total, from, to) =>
+      `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].km}\n\n` +
+      `{:video:} សរុប ${total} រឿង · កំពុងបង្ហាញ ${from}–${to}\n` +
+      `{:bulb:} ចុចលើរឿងដើម្បីមើលភាគទាំងអស់៖`,
+    epScreen: ({ title, count, completed, credits, balance, page, pages, from, to }) =>
+      `{:video:} ${title}\n` +
+      `${completed ? "{:ok:} ចប់ហើយ" : "{:fire:} កំពុងចេញ"} · ${count} ភាគ\n\n` +
+      `{:ticket:} 1 ភាគ = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
+      `{:credit:} Watch Credit របស់អ្នក៖ ${balance}\n\n` +
+      `{:lock:} មិនទាន់ទិញ   {:ok:} បានទិញ (មើលម្ដងទៀតឥតគិតថ្លៃ)\n` +
+      `{:inv_summary:} ទំព័រ ${page}/${pages} · EP ${from}–${to}`,
+    noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} មិនទាន់មានភាគសម្រាប់លក់ទេ។`,
+    needMore: (need, have) => `{:warn:} Credit មិនគ្រប់ទេ — ត្រូវការ ${need} ប៉ុន្តែមាន ${have}។\n\n{:credit:} សូមបន្ថែម Watch Credit ខាងក្រោម៖`,
+    needMoreToast: "Credit មិនគ្រប់ — សូមបន្ថែម Credit",
+    delivering: (label) => `⏳ កំពុងផ្ញើ EP ${label}…`,
+    delivered: (title, label) => `{:video:} ${title}\n{:ticket:} EP ${label}`,
+    deliverFailed: "{:fail:} មិនអាចផ្ញើវីដេអូនេះបានទេ (Credit មិនត្រូវបានកាត់ទេ)។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
+    topUpTitle: (credits) =>
+      `{:credit:} បន្ថែម Watch Credit\n\n` +
+      `{:credit:} Credit បច្ចុប្បន្ន៖ ${credits}\n` +
+      `{:ticket:} 1 Credit = 1 ភាគ\n\n` +
+      `{:bulb:} ជ្រើសរើសកញ្ចប់ រួចបង់តាម KHQR៖`,
+    granted: (n, left) => `{:party:} ការទូទាត់បានបញ្ជាក់! +${n} Watch Credit\n{:credit:} Watch Credit នៅសល់៖ ${left}\n\n{:video:} ចូល រឿងនិយាយខ្មែរ ដើម្បីទិញភាគ។`,
     back: "⬅️ ត្រឡប់",
+    mainMenu: "⬅️ ម៉ឺនុយដើម",
+    topUp: "💲 បន្ថែម Watch Credit",
+    hidden: "🙈 បានលាក់រឿងនេះ",
+    epUnit: "ភាគ",
   },
   en: {
-    section: "🎬 Khmer-dubbed Shows — pick a genre:",
-    noShows: "😔 No shows in this genre yet.",
-    showList: (kind) => `${KIND_LABEL[kind].en}`,
-    epList: (title, credits) => `🎬 ${title}\n\n1 episode = ${credits} Credit (${"$"}${(credits * DEFAULT_PRICE_USD).toFixed(2)})`,
-    locked: (n) => `🔒 EP ${n}`,
-    owned: (n) => `▶️ EP ${n}`,
-    balance: (n) => `{:credit:} Watch Credit left: ${n}`,
-    needMore: (need, have) => `😔 You need ${need} Credit but have ${have}. Top up below:`,
-    delivering: "⏳ Sending the video…",
-    bought: (left) => `✅ Bought this episode! Watch Credit left: ${left}`,
-    deliverFailed: "⚠️ Could not send that video. Please contact the operator.",
-    topUpTitle: "{:credit:} Add Watch Credit — choose a pack:",
-    granted: (n, left) => `🎉 Payment confirmed! +${n} Watch Credit\n{:credit:} Watch Credit left: ${left}`,
+    home: (credits) =>
+      `{:video:} Khmer-dubbed Shows\n\n` +
+      `{:credit:} Your Watch Credit: ${credits}\n` +
+      `{:ticket:} 1 episode = 1 Credit ($${DEFAULT_PRICE_USD.toFixed(2)})\n\n` +
+      `{:bulb:} Pick a genre below:`,
+    noShows: (kind) => `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].en}\n\n{:warn:} No shows in this genre yet.`,
+    showList: (kind, total, from, to) =>
+      `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].en}\n\n` +
+      `{:video:} ${total} shows · showing ${from}–${to}\n` +
+      `{:bulb:} Tap a show to see its episodes:`,
+    epScreen: ({ title, count, completed, credits, balance, page, pages, from, to }) =>
+      `{:video:} ${title}\n` +
+      `${completed ? "{:ok:} Completed" : "{:fire:} Ongoing"} · ${count} episodes\n\n` +
+      `{:ticket:} 1 episode = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
+      `{:credit:} Your Watch Credit: ${balance}\n\n` +
+      `{:lock:} not bought   {:ok:} bought (rewatch free)\n` +
+      `{:inv_summary:} Page ${page}/${pages} · EP ${from}–${to}`,
+    noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} No episodes on sale yet.`,
+    needMore: (need, have) => `{:warn:} Not enough Credit — need ${need}, you have ${have}.\n\n{:credit:} Add Watch Credit below:`,
+    needMoreToast: "Not enough Credit — please top up",
+    delivering: (label) => `⏳ Sending EP ${label}…`,
+    delivered: (title, label) => `{:video:} ${title}\n{:ticket:} EP ${label}`,
+    deliverFailed: "{:fail:} Could not send that video (no Credit was taken). Please contact the operator.",
+    topUpTitle: (credits) =>
+      `{:credit:} Add Watch Credit\n\n` +
+      `{:credit:} Current Credit: ${credits}\n` +
+      `{:ticket:} 1 Credit = 1 episode\n\n` +
+      `{:bulb:} Pick a pack, then pay with KHQR:`,
+    granted: (n, left) => `{:party:} Payment confirmed! +${n} Watch Credit\n{:credit:} Watch Credit left: ${left}\n\n{:video:} Open Khmer-dubbed Shows to buy episodes.`,
     back: "⬅️ Back",
+    mainMenu: "⬅️ Main menu",
+    topUp: "💲 Add Watch Credit",
+    hidden: "🙈 Show hidden",
+    epUnit: "EP",
   },
 };
 const tx = (language) => L[language] ?? L.km;
 
-// Telegram refuses a reply_markup past a certain size ("reply markup is too
-// long") -- a group with dozens of shows, or a show with hundreds of
-// episodes, hit this the first time (67 shows in one list, one row each).
-// Paging keeps every screen well under that regardless of catalog size.
-const SHOWS_PER_PAGE = 10;
-const EPS_PER_PAGE = 40; // 10 rows of 4
+// Small pages on purpose: 10 episodes (5 rows of 2) and 8 shows fit on a
+// phone screen without scrolling, and stay far under Telegram's reply
+// markup size limit however big the catalog gets.
+const SHOWS_PER_PAGE = 8;
+const EPS_PER_PAGE = 10;
+const EP_COLUMNS = 2;
 
-/** A [prev, next] row, only the buttons that actually apply. */
-function pageNav(prefix, page, hasMore, t) {
+const pad = (n) => String(n).padStart(2, "0");
+const isAdmin = (chatId) => Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
+
+/** ⏮ ◀️ [page/pages] ▶️ ⏭ -- only the arrows that go somewhere. */
+function pageNav(prefix, page, pages, suffix = "") {
+  if (pages <= 1) return [];
+  const to = (p) => `${prefix}:${p}${suffix}`;
   const row = [];
-  if (page > 0) row.push({ text: "◀️", callback_data: `${prefix}:${page - 1}` });
-  if (hasMore) row.push({ text: "▶️", callback_data: `${prefix}:${page + 1}` });
-  return row.length ? [row] : [];
+  if (page > 1) row.push({ text: "⏮", callback_data: to(0) });
+  if (page > 0) row.push({ text: "◀️", callback_data: to(page - 1) });
+  row.push({ text: `${page + 1}/${pages}`, callback_data: "watch:noop" });
+  if (page < pages - 1) row.push({ text: "▶️", callback_data: to(page + 1) });
+  if (page < pages - 2) row.push({ text: "⏭", callback_data: to(pages - 1) });
+  return [row];
 }
 
-// ------------------------------------------------------------ browse
+// ------------------------------------------------------------ screens
+
+/**
+ * Draws one screen. From a button tap it edits the tapped message in place
+ * (text to text, photo to photo), so paging and going back never make the
+ * list jump or disappear; only when the kind of message changes (a text
+ * list to a show's poster, say) is the old one deleted and a new one sent.
+ */
+async function render(chatId, cq, { photo = null, text, keyboard }) {
+  const reply_markup = { inline_keyboard: keyboard };
+  if (photo && text.length > 1024) photo = null; // Telegram's photo caption limit
+  const msg = cq?.message;
+  if (msg) {
+    const isPhoto = Boolean(msg.photo?.length);
+    let res = null;
+    if (photo && isPhoto) {
+      res = await call("editMessageMedia", {
+        chat_id: chatId,
+        message_id: msg.message_id,
+        media: { type: "photo", media: photo, caption: text },
+        reply_markup,
+      });
+    } else if (!photo && !isPhoto) {
+      res = await call("editMessageText", { chat_id: chatId, message_id: msg.message_id, text, reply_markup });
+    }
+    if (res?.ok || /not modified/i.test(String(res?.description ?? ""))) return;
+    await clearScreen(cq);
+  }
+  if (photo) {
+    const sent = await call("sendPhoto", { chat_id: chatId, photo, caption: text, reply_markup });
+    if (sent?.ok) return;
+  }
+  await call("sendMessage", { chat_id: chatId, text, reply_markup });
+}
+
+/** Removes the button screen that was tapped. */
+async function clearScreen(cq) {
+  const chatId = cq?.message?.chat?.id;
+  const messageId = cq?.message?.message_id;
+  if (!chatId || !messageId) return;
+  await call("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
+}
+
+// A forum's built-in "General" topic and topics with no videos aren't shows.
+const isShowTopic = (topic) => !/^general$/i.test(String(topic.title ?? "").trim()) && (topic.total_episodes ?? 0) > 0;
 
 async function showsInKind(kind) {
   const meta = await showMeta();
@@ -199,156 +296,189 @@ async function showsInKind(kind) {
     .filter(([, m]) => m.kind === kind && m.on_sale !== false)
     .map(([id]) => id);
   if (!topicIds.length) return [];
-  const topics = rows(await db().from("topics").select("*").in("id", topicIds));
-  return topics.map((topic) => ({ topic, meta: meta[topic.id] })).sort((a, b) => a.topic.title.localeCompare(b.topic.title));
+  const topics = rows(await db().from("topics").select("id, title, total_episodes").in("id", topicIds));
+  return topics
+    .filter(isShowTopic)
+    .map((topic) => ({ topic, meta: meta[topic.id] }))
+    .sort((a, b) => a.topic.title.localeCompare(b.topic.title));
 }
 
-/** The genre picker -- the Watch section's home screen. */
-export async function showGenres(chatId, language) {
-  const t = tx(language);
-  await call("sendMessage", {
-    chat_id: chatId,
-    text: t.section,
-    reply_markup: {
-      inline_keyboard: [
-        KINDS.map((k) => ({ text: KIND_LABEL[k][language] ?? KIND_LABEL[k].km, callback_data: `watch:kind:${k}:0` })),
-        [{ text: t.back, emoji: "inv_back", callback_data: "watch:exit" }],
-      ],
-    },
+/** The genre picker -- the section's home screen. */
+export async function showGenres(chatId, user, cq = null) {
+  const t = tx(user?.language);
+  const w = await walletFor(user?.telegram_user_id);
+  const keyboard = [
+    ...KINDS.map((kind) => [
+      { text: `${KIND_EMOJI[kind]} ${KIND_NAME[kind][user?.language] ?? KIND_NAME[kind].km}`, emoji: KIND_ICON[kind], callback_data: `watch:kind:${kind}:0` },
+    ]),
+    [{ text: t.topUp, emoji: "credit", callback_data: "watch:topup" }],
+    [{ text: t.mainMenu, emoji: "inv_back", callback_data: "watch:exit" }],
+  ];
+  await render(chatId, cq, { text: t.home(w.credits ?? 0), keyboard });
+}
+
+async function showKindList(chatId, user, kind, page, cq) {
+  const t = tx(user.language);
+  if (!KINDS.includes(kind)) return showGenres(chatId, user, cq);
+  const all = await showsInKind(kind);
+  const back = [{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }];
+  if (!all.length) return render(chatId, cq, { text: t.noShows(kind), keyboard: [back] });
+
+  const pages = Math.ceil(all.length / SHOWS_PER_PAGE);
+  page = Math.min(Math.max(page, 0), pages - 1);
+  const start = page * SHOWS_PER_PAGE;
+  const list = all.slice(start, start + SHOWS_PER_PAGE);
+  const admin = isAdmin(chatId);
+  const keyboard = list.map(({ topic, meta }) => {
+    const row = [
+      {
+        text: `🎬 ${topic.title} · ${topic.total_episodes} ${t.epUnit}${meta.status === "completed" ? " ✅" : ""}`,
+        emoji: meta.poster_emoji || KIND_ICON[kind],
+        callback_data: `watch:show:${topic.id}:0:${page}`,
+      },
+    ];
+    // The operator's own chat gets a hide button per show, for topics that
+    // aren't really shows (a season sub-topic, a chat thread, …).
+    if (admin) row.push({ text: "🙈", callback_data: `watch:hide:${topic.id}:${page}` });
+    return row;
+  });
+  keyboard.push(...pageNav(`watch:kind:${kind}`, page, pages));
+  keyboard.push(back);
+  await render(chatId, cq, {
+    text: t.showList(kind, all.length, start + 1, start + list.length),
+    keyboard,
   });
 }
 
-async function showKindList(chatId, language, kind, page = 0) {
-  const t = tx(language);
-  const all = await showsInKind(kind);
-  if (!all.length) {
-    await call("sendMessage", { chat_id: chatId, text: t.noShows });
-    return;
-  }
-  const start = page * SHOWS_PER_PAGE;
-  const list = all.slice(start, start + SHOWS_PER_PAGE);
-  const rowsOut = list.map(({ topic, meta }) => [
-    {
-      text: `${meta.poster_emoji ? `{:${meta.poster_emoji}:} ` : ""}${topic.title}${meta.status === "completed" ? " ✅" : " 🔴"}`,
-      callback_data: `watch:show:${topic.id}:0`,
-    },
-  ]);
-  rowsOut.push(...pageNav(`watch:kind:${kind}`, page, start + SHOWS_PER_PAGE < all.length, t));
-  rowsOut.push([{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }]); // one level up: the genre picker
-  const pageNote = all.length > SHOWS_PER_PAGE ? ` (${start + 1}-${Math.min(start + SHOWS_PER_PAGE, all.length)}/${all.length})` : "";
-  await call("sendMessage", { chat_id: chatId, text: t.showList(kind) + pageNote, reply_markup: { inline_keyboard: rowsOut } });
+/** A show's episodes, numbered and in order, whatever the scan stored. */
+async function orderedEpisodes(topicId) {
+  const list = await fetchAll(() =>
+    db().from("episodes").select("id, ep_number, title, file_name, message_id").eq("topic_id", topicId).order("id")
+  );
+  const numbered = list.map((ep) => ({ ...ep, num: ep.ep_number ?? parseEpNumber(ep.title, ep.file_name) }));
+  numbered.sort(
+    (a, b) => (a.num ?? Infinity) - (b.num ?? Infinity) || Number(a.message_id ?? 0) - Number(b.message_id ?? 0)
+  );
+  return numbered.map((ep, i) => ({ ...ep, label: ep.num != null ? pad(ep.num) : `#${i + 1}` }));
 }
 
-async function showEpisodeList(chatId, user, topicId, page = 0) {
+async function showEpisodeList(chatId, user, topicId, page, listPage, cq) {
   const t = tx(user.language);
-  const [topic] = rows(await db().from("topics").select("*").eq("id", topicId).limit(1));
-  if (!topic) return;
+  const [topic] = rows(await db().from("topics").select("id, title").eq("id", topicId).limit(1));
+  if (!topic) return showGenres(chatId, user, cq);
   const meta = (await showMeta())[topicId] ?? {};
-  const allEpisodes = await fetchAll(() =>
-    db().from("episodes").select("id, ep_number").eq("topic_id", topicId).order("ep_number")
-  );
+  const back = [{ text: t.back, emoji: "inv_back", callback_data: `watch:kind:${meta.kind}:${listPage}` }];
+  const episodes = await orderedEpisodes(topicId);
+  if (!episodes.length) return render(chatId, cq, { text: t.noEpisodes(topic.title), keyboard: [back] });
+
   const w = await walletFor(user.telegram_user_id);
   const credits = meta.ep_credits ?? 1;
-
+  const pages = Math.ceil(episodes.length / EPS_PER_PAGE);
+  page = Math.min(Math.max(page, 0), pages - 1);
   const start = page * EPS_PER_PAGE;
-  const episodes = allEpisodes.slice(start, start + EPS_PER_PAGE);
-  const buttons = [];
-  let row = [];
-  for (const ep of episodes) {
-    const owned = Boolean(w.bought?.[ep.id]);
-    row.push({ text: owned ? t.owned(ep.ep_number ?? "?") : t.locked(ep.ep_number ?? "?"), callback_data: `watch:ep:${ep.id}` });
-    if (row.length === 4) {
-      buttons.push(row);
-      row = [];
-    }
-  }
-  if (row.length) buttons.push(row);
-  buttons.push(...pageNav(`watch:show:${topicId}`, page, start + EPS_PER_PAGE < allEpisodes.length, t));
-  buttons.push([{ text: t.back, emoji: "inv_back", callback_data: `watch:kind:${meta.kind}:0` }]);
+  const shown = episodes.slice(start, start + EPS_PER_PAGE);
 
-  const pageNote =
-    allEpisodes.length > EPS_PER_PAGE ? ` (${start + 1}-${Math.min(start + EPS_PER_PAGE, allEpisodes.length)}/${allEpisodes.length})` : "";
-  const caption = `${t.epList(topic.title, credits)}${pageNote}\n\n${t.balance(w.credits ?? 0)}`;
-  if (meta.poster_file_id && page === 0) {
-    // Telegram caps a photo caption at 1024 characters (a plain message has
-    // no such limit) -- comfortably enough room for this text, but fall
-    // back to a plain message rather than silently truncate if it somehow
-    // isn't (a very long show title, say).
-    if (caption.length <= 1024) {
-      const sent = await call("sendPhoto", { chat_id: chatId, photo: meta.poster_file_id, caption, reply_markup: { inline_keyboard: buttons } });
-      if (sent?.ok) return;
-    }
+  const keyboard = [];
+  for (let i = 0; i < shown.length; i += EP_COLUMNS) {
+    keyboard.push(
+      shown.slice(i, i + EP_COLUMNS).map((ep) => {
+        const owned = Boolean(w.bought?.[ep.id]);
+        return {
+          text: `${owned ? "✅" : "🔒"} EP ${ep.label}`,
+          emoji: owned ? "ok" : "lock",
+          callback_data: `watch:ep:${ep.id}:${page}:${listPage}`,
+        };
+      })
+    );
   }
-  await call("sendMessage", { chat_id: chatId, text: caption, reply_markup: { inline_keyboard: buttons } });
+  keyboard.push(...pageNav(`watch:show:${topicId}`, page, pages, `:${listPage}`));
+  keyboard.push([...back, { text: t.topUp, emoji: "credit", callback_data: "watch:topup" }]);
+
+  const text = t.epScreen({
+    title: topic.title,
+    count: episodes.length,
+    completed: meta.status === "completed",
+    credits,
+    balance: w.credits ?? 0,
+    page: page + 1,
+    pages,
+    from: shown[0].label,
+    to: shown[shown.length - 1].label,
+  });
+  await render(chatId, cq, { photo: meta.poster_file_id ?? null, text, keyboard });
 }
 
-async function buyEpisode(chatId, cq, user, episodeId) {
+async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
   const t = tx(user.language);
   const [episode] = rows(
-    await db().from("episodes").select("id, topic_id, ep_number, r2_key").eq("id", episodeId).limit(1)
+    await db().from("episodes").select("id, topic_id, ep_number, title, file_name, r2_key").eq("id", episodeId).limit(1)
   );
-  if (!episode) return;
+  if (!episode) {
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    return;
+  }
   const meta = (await showMeta())[episode.topic_id] ?? {};
   const [topic] = rows(await db().from("topics").select("title").eq("id", episode.topic_id).limit(1));
-  const epCaption = `🎬 ${topic?.title ?? ""} — EP ${episode.ep_number}`.trim();
+  const num = episode.ep_number ?? parseEpNumber(episode.title, episode.file_name);
+  const label = num != null ? pad(num) : "";
   const credits = meta.ep_credits ?? 1;
   const w = await walletFor(user.telegram_user_id);
   const already = Boolean(w.bought?.[episodeId]);
 
+  if (!already && (w.credits ?? 0) < credits) {
+    await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.needMoreToast, show_alert: false });
+    await showTopUps(chatId, user, null, t.needMore(credits, w.credits ?? 0));
+    return;
+  }
   if (!already) {
-    if ((w.credits ?? 0) < credits) {
-      await call("answerCallbackQuery", { callback_query_id: cq.id });
-      await call("sendMessage", { chat_id: chatId, text: t.needMore(credits, w.credits ?? 0) });
-      await showTopUps(chatId, user.language);
-      return;
-    }
     await saveWallet(user.telegram_user_id, {
       ...w,
       credits: w.credits - credits,
       bought: { ...w.bought, [episodeId]: true },
     });
   }
-  await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.delivering });
+  await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.delivering(label) });
 
+  const caption = t.delivered(topic?.title ?? "", label);
   let delivered = { ok: false };
   if (episode.r2_key) {
     const url = await r2.urlForKey(episode.r2_key).catch(() => null);
     if (url) {
-      await call("sendMessage", { chat_id: chatId, text: `${epCaption}\n${url}` });
+      await call("sendMessage", { chat_id: chatId, text: `${caption}\n{:link:} ${url}` });
       delivered = { ok: true };
     }
   }
   if (!delivered.ok) {
-    delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption: epCaption });
+    delivered = await botDeliver.deliverEpisode({ userChatId: chatId, episodeId: episode.id, caption });
   }
 
   if (!delivered.ok) {
-    // Refund: the credit was spent for nothing.
+    console.error(`Watch delivery failed for episode ${episode.id}: ${delivered.reason ?? "?"} ${delivered.error ?? ""}`);
     if (!already) {
       const fresh = await walletFor(user.telegram_user_id);
-      await saveWallet(user.telegram_user_id, { ...fresh, credits: (fresh.credits ?? 0) + credits });
+      const bought = { ...fresh.bought };
+      delete bought[episodeId];
+      await saveWallet(user.telegram_user_id, { ...fresh, credits: (fresh.credits ?? 0) + credits, bought });
     }
     await call("sendMessage", { chat_id: chatId, text: t.deliverFailed });
     return;
   }
-  if (!already) {
-    const fresh = await walletFor(user.telegram_user_id);
-    await call("sendMessage", { chat_id: chatId, text: t.bought(fresh.credits ?? 0) });
-  }
+  // The video stays in the chat (with the show's name on it, to keep or
+  // share); the episode list moves down under it, updated, so the next
+  // episode is one tap away without scrolling back up.
+  await clearScreen(cq);
+  await showEpisodeList(chatId, user, episode.topic_id, page, listPage, null);
 }
 
-async function showTopUps(chatId, language) {
-  const t = tx(language);
+async function showTopUps(chatId, user, cq = null, lead = null) {
+  const t = tx(user?.language);
+  const w = await walletFor(user?.telegram_user_id);
   const list = rows(await db().from("bot_packages").select("*").like("id", `${WATCH_PACKAGE_PREFIX}%`).eq("active", true).order("sort"));
-  await call("sendMessage", {
-    chat_id: chatId,
-    text: t.topUpTitle,
-    reply_markup: {
-      inline_keyboard: list.map((pkg) => [
-        { text: language === "en" ? pkg.title_en : pkg.title_km, emoji: "credit", callback_data: `bot:buy:${pkg.id}` },
-      ]),
-    },
-  });
+  const keyboard = list.map((pkg) => [
+    { text: user?.language === "en" ? pkg.title_en : pkg.title_km, emoji: "credit", callback_data: `bot:buy:${pkg.id}` },
+  ]);
+  keyboard.push([{ text: t.back, emoji: "inv_back", callback_data: "watch:home" }]);
+  await render(chatId, cq, { text: lead ?? t.topUpTitle(w.credits ?? 0), keyboard });
 }
 
 /** botPay.grant() calls this once a watch_* order is paid. */
@@ -357,60 +487,38 @@ export async function grantedText(language, credits, user) {
   return tx(language).granted(credits, left);
 }
 
-/**
- * Clears the button screen the user just tapped from before drawing the
- * next one, so browsing genre -> show -> episode list leaves one screen in
- * the chat instead of stacking every step on top of the last.
- */
-async function clearScreen(cq) {
-  const chatId = cq.message?.chat?.id;
-  const messageId = cq.message?.message_id;
-  if (!chatId || !messageId) return;
-  await call("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
-}
-
 /** `watch:...` callback data. Returns true when it handled the tap. */
 export async function handleCallback(cq, user) {
   const data = String(cq?.data ?? "");
   if (!data.startsWith("watch:")) return false;
   const chatId = cq.message?.chat?.id;
   if (!chatId) return true;
-  const [, kind, value, pageStr] = data.split(":");
-  const page = Number(pageStr) || 0;
+  const [, action, a, b, c] = data.split(":");
+  const num = (v) => Number(v) || 0;
 
-  if (kind === "home") {
-    await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await clearScreen(cq);
-    await showGenres(chatId, user.language);
+  if (action === "ep") {
+    await buyEpisode(chatId, cq, user, a, num(b), num(c));
     return true;
   }
-  if (kind === "exit") {
-    await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await clearScreen(cq);
-    await call("sendMessage", {
-      chat_id: chatId,
-      text: user.language === "en" ? "⬅️ Main menu" : "⬅️ ម៉ឺនុយដើម",
-      reply_markup: mainKeyboard(user.language),
-    });
-    return true;
-  }
-  if (kind === "kind") {
-    await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await clearScreen(cq);
-    await showKindList(chatId, user.language, value, page);
-    return true;
-  }
-  if (kind === "show") {
-    await call("answerCallbackQuery", { callback_query_id: cq.id });
-    await clearScreen(cq);
-    await showEpisodeList(chatId, user, value, page);
-    return true;
-  }
-  if (kind === "ep") {
-    await buyEpisode(chatId, cq, user, value);
+  if (action === "hide" && isAdmin(chatId)) {
+    const saved = await saveShowMeta(a, { on_sale: false });
+    await call("answerCallbackQuery", { callback_query_id: cq.id, text: tx(user.language).hidden });
+    await showKindList(chatId, user, saved.kind, num(b), cq);
     return true;
   }
   await call("answerCallbackQuery", { callback_query_id: cq.id }).catch(() => {});
+  if (action === "home") await showGenres(chatId, user, cq);
+  else if (action === "topup") await showTopUps(chatId, user, cq);
+  else if (action === "kind") await showKindList(chatId, user, a, num(b), cq);
+  else if (action === "show") await showEpisodeList(chatId, user, a, num(b), num(c), cq);
+  else if (action === "exit") {
+    await clearScreen(cq);
+    await call("sendMessage", {
+      chat_id: chatId,
+      text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
+      reply_markup: mainKeyboard(user.language),
+    });
+  }
   return true;
 }
 
@@ -445,7 +553,7 @@ export async function addOrScanGroup(chatId) {
  */
 export async function setShow(topicId, kind, status, credits, posterBuffer, posterFileId) {
   if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
-  const patch = { kind };
+  const patch = { kind, on_sale: true }; // re-shows a show hidden with 🙈
   if (status) patch.status = status;
   if (credits) patch.ep_credits = Math.max(1, Math.round(Number(credits)));
   if (posterBuffer) {
@@ -467,7 +575,7 @@ export async function listAllTopics() {
   return topics
     .map((topic) => {
       const m = meta[topic.id];
-      const tag = m ? `[${m.kind}/${m.status}/${m.ep_credits}cr]` : "[unset]";
+      const tag = m ? `[${m.kind}/${m.status}/${m.ep_credits}cr${m.on_sale === false ? "/hidden" : ""}]` : "[unset]";
       return `${topic.title} (${topic.total_episodes} ep) ${tag}\n${topic.id}`;
     })
     .join("\n\n");
@@ -489,7 +597,9 @@ export const ADMIN_HELP =
   "   ផ្ញើជា caption លើរូប poster (forward ពី @AnimetioMini_bot ក៏បាន)\n" +
   "   → poster ក្លាយជា emoji របស់រឿងនោះ\n" +
   "   ឧ. /setshow 9f2c…e1 anime ongoing\n\n" +
-  "ចំណាំ៖ ដើម្បីផ្ញើ EP ពី Group ត្រូវកំណត់ storage channel (/setstorage) ជាមុនសិន។";
+  "4️⃣ រឿងដែលមិនមែនជារឿង (Topic ជជែក, វគ្គរង…) ចុច 🙈 ក្បែររឿងនោះក្នុងបញ្ជីរឿង ដើម្បីលាក់\n" +
+  "   (ឃើញតែក្នុងឆាតអ្នកគ្រប់គ្រង) · /setshow ម្ដងទៀត ដើម្បីបង្ហាញវាវិញ។ Topic «General» និង Topic គ្មានវីដេអូ ត្រូវលាក់ដោយស្វ័យប្រវត្តិ។\n\n" +
+  "ចំណាំ៖ ដើម្បីផ្ញើ EP ពី Group ត្រូវកំណត់ storage channel (/setstorage) ជាមុនសិន ហើយគណនី userbot ដែលនៅក្នុង Group VIP ត្រូវនៅក្នុង storage channel ដែរ។";
 
 /**
  * /setgroup <link|chat id> <anime|donghua|movie> [ongoing|completed] [credits]

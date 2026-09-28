@@ -37,7 +37,7 @@ export const EMOJI = {
   // brand
   logo: ["logo", "⬇️"],
   brand: ["brand", "💎"],
-  admin: ["admin", "🛡"],
+  admin: ["admin", "🛡️"],
   // main menu
   m_free: ["m_free", "🆓"],
   m_pro: ["premium", "👑"],
@@ -47,7 +47,7 @@ export const EMOJI = {
   m_referral: ["m_referral", "👥"],
   m_language: ["m_language", "🌐"],
   m_help: ["m_help", "❓"],
-  m_desktop: ["m_desktop", "🖥"],
+  m_desktop: ["m_desktop", "🖥️"],
   // KH Invoice section
   inv_app: ["inv_app", "📱"],
   inv_create: ["inv_create", "🧾"],
@@ -136,8 +136,10 @@ function decorateButtons(markup, ids) {
       if (!button || typeof button !== "object") return button;
       const { emoji, ...rest } = button;
       if (typeof rest.text === "string") rest.text = resolve(rest.text, NONE).text;
-      if (emoji && ids[emoji]) {
-        rest.icon_custom_emoji_id = ids[emoji];
+      // `emoji` is a token name, or a raw custom_emoji_id (a show's poster).
+      const iconId = /^\d{5,}$/.test(String(emoji ?? "")) ? (ids === NONE ? null : String(emoji)) : ids[emoji];
+      if (emoji && iconId) {
+        rest.icon_custom_emoji_id = iconId;
         // The logo takes the place of the label's own leading emoji.
         if (typeof rest.text === "string") {
           const bare = rest.text.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
@@ -165,6 +167,11 @@ export async function decorate(body, { plain = false } = {}) {
     next.caption = r.text;
     if (r.entities.length) next.caption_entities = r.entities;
   }
+  // editMessageMedia carries its caption inside `media`.
+  if (next.media && typeof next.media === "object" && typeof next.media.caption === "string") {
+    const r = resolve(next.media.caption, ids, next.media.caption_entities ?? []);
+    next.media = { ...next.media, caption: r.text, ...(r.entities.length ? { caption_entities: r.entities } : {}) };
+  }
   if (next.reply_markup) next.reply_markup = decorateButtons(next.reply_markup, ids);
   return next;
 }
@@ -172,12 +179,16 @@ export async function decorate(body, { plain = false } = {}) {
 /** True when a failed call looks like Telegram refusing the custom emoji. */
 export function refusedEmoji(data) {
   const reason = String(data?.description ?? "");
-  const hit = /custom emoji|custom_emoji|icon_custom_emoji|ENTITY|DOCUMENT_INVALID|STICKER/i.test(reason);
-  if (hit) {
-    refusedAt = Date.now();
-    console.error("Telegram refused custom emoji -- falling back to plain emoji:", reason);
-  }
-  return hit;
+  const hit = /custom emoji|custom_emoji|icon_custom_emoji|ENTITY|UTF-16|DOCUMENT_INVALID|STICKER/i.test(reason);
+  if (!hit) return false;
+  // Only a broken pack (deleted set, owner lost Premium) is worth pausing
+  // custom emoji bot-wide. A bad entity in one message (ENTITY_TEXT_INVALID,
+  // a misaligned offset) used to pause them for everyone for 10 minutes too,
+  // which is most of why the icons kept showing up as plain emoji.
+  const packLevel = /DOCUMENT_INVALID|STICKER|premium/i.test(reason);
+  if (packLevel) refusedAt = Date.now();
+  console.error(`Telegram refused custom emoji (${packLevel ? "pack -- pausing 10 min" : "this message only"}), resending plain:`, reason);
+  return true;
 }
 
 // ------------------------------------------------------------ the pack

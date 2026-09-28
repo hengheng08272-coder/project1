@@ -318,7 +318,7 @@ export async function handleMessage(message) {
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
-      return watch.showGenres(chatId, user.language);
+      return watch.showGenres(chatId, user);
     case "account":
       return showAccount(chatId, user);
     case "history":
