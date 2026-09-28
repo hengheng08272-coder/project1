@@ -159,13 +159,15 @@ const L = {
       `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].km}\n\n` +
       `{:video:} សរុប ${total} រឿង · កំពុងបង្ហាញ ${from}–${to}\n` +
       `{:bulb:} ចុចលើរឿងដើម្បីមើលភាគទាំងអស់៖`,
-    epScreen: ({ title, count, completed, credits, balance, page, pages, from, to }) =>
+    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example }) =>
       `{:video:} ${title}\n` +
-      `${completed ? "{:ok:} ចប់ហើយ" : "{:fire:} កំពុងចេញ"} · ${count} ភាគ\n\n` +
+      `${completed ? "{:ok:} ចប់ហើយ" : "{:fire:} កំពុងចេញ"} · EP ${from} ដល់ EP ${to} (${count} ភាគ)\n\n` +
       `{:ticket:} 1 ភាគ = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
-      `{:credit:} Watch Credit របស់អ្នក៖ ${balance}\n\n` +
-      `{:lock:} មិនទាន់ទិញ   {:ok:} បានទិញ (មើលម្ដងទៀតឥតគិតថ្លៃ)\n` +
-      `{:inv_summary:} ទំព័រ ${page}/${pages} · EP ${from}–${to}`,
+      `{:credit:} Watch Credit របស់អ្នក៖ ${balance}\n` +
+      (owned ? `{:ok:} បានទិញ៖ ${owned}\n` : "") +
+      `\n{:bulb:} វាយលេខ EP ដែលចង់ទិញ ក្នុងឆាត ឧ. ${from} ឬ ${example}`,
+    notFound: (want, from, to) => `{:warn:} រកមិនឃើញ EP ${want} ទេ — មាន EP ${from} ដល់ EP ${to}។`,
+    tooMany: (max) => `{:warn:} ទិញបានម្ដងច្រើនបំផុត ${max} ភាគ។`,
     noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} មិនទាន់មានភាគសម្រាប់លក់ទេ។`,
     needMore: (need, have) => `{:warn:} Credit មិនគ្រប់ទេ — ត្រូវការ ${need} ប៉ុន្តែមាន ${have}។\n\n{:credit:} សូមបន្ថែម Watch Credit ខាងក្រោម៖`,
     needMoreToast: "Credit មិនគ្រប់ — សូមបន្ថែម Credit",
@@ -201,13 +203,15 @@ const L = {
       `{:${KIND_ICON[kind]}:} ${KIND_NAME[kind].en}\n\n` +
       `{:video:} ${total} shows · showing ${from}–${to}\n` +
       `{:bulb:} Tap a show to see its episodes:`,
-    epScreen: ({ title, count, completed, credits, balance, page, pages, from, to }) =>
+    epScreen: ({ title, count, completed, credits, balance, from, to, owned, example }) =>
       `{:video:} ${title}\n` +
-      `${completed ? "{:ok:} Completed" : "{:fire:} Ongoing"} · ${count} episodes\n\n` +
+      `${completed ? "{:ok:} Completed" : "{:fire:} Ongoing"} · EP ${from} to EP ${to} (${count} episodes)\n\n` +
       `{:ticket:} 1 episode = ${credits} Credit ($${(credits * DEFAULT_PRICE_USD).toFixed(2)})\n` +
-      `{:credit:} Your Watch Credit: ${balance}\n\n` +
-      `{:lock:} not bought   {:ok:} bought (rewatch free)\n` +
-      `{:inv_summary:} Page ${page}/${pages} · EP ${from}–${to}`,
+      `{:credit:} Your Watch Credit: ${balance}\n` +
+      (owned ? `{:ok:} Bought: ${owned}\n` : "") +
+      `\n{:bulb:} Type the EP you want to buy in the chat, e.g. ${from} or ${example}`,
+    notFound: (want, from, to) => `{:warn:} No EP ${want} — this show has EP ${from} to EP ${to}.`,
+    tooMany: (max) => `{:warn:} At most ${max} episodes at a time.`,
     noEpisodes: (title) => `{:video:} ${title}\n\n{:warn:} No episodes on sale yet.`,
     needMore: (need, have) => `{:warn:} Not enough Credit — need ${need}, you have ${have}.\n\n{:credit:} Add Watch Credit below:`,
     needMoreToast: "Not enough Credit — please top up",
@@ -235,12 +239,9 @@ const L = {
 };
 const tx = (language) => L[language] ?? L.km;
 
-// Small pages on purpose: 10 episodes (5 rows of 2) and 8 shows fit on a
-// phone screen without scrolling, and stay far under Telegram's reply
-// markup size limit however big the catalog gets.
+// Small pages keep the list on one phone screen and far under Telegram's
+// reply markup size limit however big the catalog gets.
 const SHOWS_PER_PAGE = 3; // three shows at a time, then ▶️ for the next
-const EPS_PER_PAGE = 10;
-const EP_COLUMNS = 2;
 
 const pad = (n) => String(n).padStart(2, "0");
 const isAdmin = (chatId) => Boolean(config.telegramAdminChatId) && String(chatId) === String(config.telegramAdminChatId);
@@ -283,14 +284,15 @@ async function render(chatId, cq, { photo = null, text, keyboard }) {
     } else if (!photo && !isPhoto) {
       res = await call("editMessageText", { chat_id: chatId, message_id: msg.message_id, text, reply_markup });
     }
-    if (res?.ok || /not modified/i.test(String(res?.description ?? ""))) return;
+    if (res?.ok || /not modified/i.test(String(res?.description ?? ""))) return msg.message_id;
     await clearScreen(cq);
   }
   if (photo) {
     const sent = await call("sendPhoto", { chat_id: chatId, photo, caption: text, reply_markup });
-    if (sent?.ok) return;
+    if (sent?.ok) return sent.result?.message_id;
   }
-  await call("sendMessage", { chat_id: chatId, text, reply_markup });
+  const sent = await call("sendMessage", { chat_id: chatId, text, reply_markup });
+  return sent?.result?.message_id;
 }
 
 /** Removes the button screen that was tapped. */
@@ -389,7 +391,23 @@ async function orderedEpisodes(topicId) {
   return numbered.map((ep, i) => ({ ...ep, label: ep.num != null ? pad(ep.num) : `#${i + 1}` }));
 }
 
-async function showEpisodeList(chatId, user, topicId, page, listPage, cq) {
+// The show a chat is looking at, so a number typed next ("190", "EP 190",
+// "190-192") buys that episode. In memory: after a restart the person just
+// opens the show again.
+const viewing = new Map();
+const VIEW_MS = 30 * 60 * 1000;
+const MAX_AT_ONCE = 5;
+
+/** Forgets the open show (another menu section was opened). */
+export function cancelPending(chatId) {
+  viewing.delete(String(chatId));
+}
+
+/**
+ * A show: its poster, EP range, price and balance -- no grid of episode
+ * buttons; the buyer types the EP they want (see handleText).
+ */
+async function showEpisodeList(chatId, user, topicId, _page, listPage, cq) {
   const t = tx(user.language);
   const [topic] = rows(await db().from("topics").select("id, title").eq("id", topicId).limit(1));
   if (!topic) return showGenres(chatId, user, cq);
@@ -399,65 +417,89 @@ async function showEpisodeList(chatId, user, topicId, page, listPage, cq) {
   if (!episodes.length) return render(chatId, cq, { text: t.noEpisodes(topic.title), keyboard: [back] });
 
   const w = await walletFor(user.telegram_user_id);
-  const credits = meta.ep_credits ?? 1;
-  const pages = Math.ceil(episodes.length / EPS_PER_PAGE);
-  page = Math.min(Math.max(page, 0), pages - 1);
-  const start = page * EPS_PER_PAGE;
-  const shown = episodes.slice(start, start + EPS_PER_PAGE);
+  const numbered = episodes.filter((ep) => ep.num != null);
+  const first = (numbered[0] ?? episodes[0]).label;
+  const last = (numbered[numbered.length - 1] ?? episodes[episodes.length - 1]).label;
+  const ownedLabels = episodes.filter((ep) => w.bought?.[ep.id]).map((ep) => ep.label);
+  const owned = ownedLabels.length > 12 ? `${ownedLabels.slice(0, 12).join(", ")} … (+${ownedLabels.length - 12})` : ownedLabels.join(", ");
 
-  const keyboard = [];
-  for (let i = 0; i < shown.length; i += EP_COLUMNS) {
-    keyboard.push(
-      shown.slice(i, i + EP_COLUMNS).map((ep) => {
-        const owned = Boolean(w.bought?.[ep.id]);
-        return {
-          text: `${owned ? "✅" : "🔒"} EP ${ep.label}`,
-          emoji: owned ? "ok" : "lock",
-          callback_data: `watch:ep:${ep.id}:${page}:${listPage}`,
-        };
-      })
-    );
-  }
-  keyboard.push(...pageNav(`watch:show:${topicId}`, page, pages, `:${listPage}`));
-  keyboard.push([{ text: t.topUp, emoji: "credit", callback_data: "watch:topup" }]);
+  const keyboard = [[{ text: t.topUp, emoji: "credit", style: "success", callback_data: "watch:topup" }]];
   if (isAdmin(chatId)) keyboard.push([{ text: t.posterBtn, emoji: "camera", callback_data: `watch:poster:${topicId}` }]);
   keyboard.push(back);
-
   const text = t.epScreen({
     title: topic.title,
     count: episodes.length,
     completed: meta.status === "completed",
-    credits,
+    credits: meta.ep_credits ?? 1,
     balance: w.credits ?? 0,
-    page: page + 1,
-    pages,
-    from: shown[0].label,
-    to: shown[shown.length - 1].label,
+    from: first,
+    to: last,
+    owned,
+    example: numbered.length > 2 ? `${numbered[0].label}-${numbered[2].label}` : first,
   });
-  await render(chatId, cq, { photo: meta.poster_file_id ?? null, text, keyboard });
+  const messageId = await render(chatId, cq, { photo: meta.poster_file_id ?? null, text, keyboard });
+  viewing.set(String(chatId), { topicId, listPage, messageId, at: Date.now() });
 }
 
-async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
+/**
+ * Text typed while a show is open: an EP number or a range. Returns true
+ * when it was one (handled), false to let the rest of the bot see it.
+ */
+export async function handleText(chatId, user, text) {
+  const open = viewing.get(String(chatId));
+  if (!open || Date.now() - open.at > VIEW_MS) return false;
+  const src = String(text ?? "").replace(/[\u17E0-\u17E9]/g, (d) => String(d.charCodeAt(0) - 0x17e0)).trim();
+  const m = /^(?:ep\s*)?0*(\d{1,4})(?:\s*(?:-|–|ដល់|to)\s*(?:ep\s*)?0*(\d{1,4}))?$/i.exec(src);
+  if (!m) return false;
+  const t = tx(user.language);
+  const lo = Number(m[1]);
+  const hi = m[2] ? Number(m[2]) : lo;
+  const episodes = await orderedEpisodes(open.topicId);
+  const numbered = episodes.filter((ep) => ep.num != null);
+  const wanted = numbered.filter((ep) => ep.num >= Math.min(lo, hi) && ep.num <= Math.max(lo, hi));
+  // Only one copy per number (a re-upload of the same EP is still one EP).
+  const seen = new Set();
+  const picks = wanted.filter((ep) => !seen.has(ep.num) && seen.add(ep.num));
+  if (!picks.length) {
+    const from = (numbered[0] ?? episodes[0])?.label ?? "?";
+    const to = (numbered[numbered.length - 1] ?? episodes[episodes.length - 1])?.label ?? "?";
+    await call("sendMessage", { chat_id: chatId, text: t.notFound(m[2] ? `${m[1]}-${m[2]}` : m[1], from, to) });
+    return true;
+  }
+  if (picks.length > MAX_AT_ONCE) {
+    await call("sendMessage", { chat_id: chatId, text: t.tooMany(MAX_AT_ONCE) });
+    return true;
+  }
+  let sent = 0;
+  for (const ep of picks) {
+    const r = await purchase(chatId, user, ep.id, ep.label);
+    if (r === "ok") sent += 1;
+    if (r === "no-credit") break;
+  }
+  // The show screen moves under the new video(s), balance updated.
+  if (sent) {
+    if (open.messageId) await call("deleteMessage", { chat_id: chatId, message_id: open.messageId }).catch(() => {});
+    await showEpisodeList(chatId, user, open.topicId, 0, open.listPage, null);
+  }
+  return true;
+}
+
+/** Charges (unless already bought) and delivers one episode. */
+async function purchase(chatId, user, episodeId, label) {
   const t = tx(user.language);
   const [episode] = rows(
-    await db().from("episodes").select("id, topic_id, ep_number, title, file_name, r2_key").eq("id", episodeId).limit(1)
+    await db().from("episodes").select("id, topic_id, r2_key").eq("id", episodeId).limit(1)
   );
-  if (!episode) {
-    await call("answerCallbackQuery", { callback_query_id: cq.id });
-    return;
-  }
+  if (!episode) return "missing";
   const meta = (await showMeta())[episode.topic_id] ?? {};
   const [topic] = rows(await db().from("topics").select("title").eq("id", episode.topic_id).limit(1));
-  // Same label the list showed (EP 07, or #3 for an unnumbered one).
-  const label = (await orderedEpisodes(episode.topic_id)).find((ep) => ep.id === episodeId)?.label ?? "";
   const credits = meta.ep_credits ?? 1;
   const w = await walletFor(user.telegram_user_id);
   const already = Boolean(w.bought?.[episodeId]);
 
   if (!already && (w.credits ?? 0) < credits) {
-    await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.needMoreToast, show_alert: false });
     await showTopUps(chatId, user, null, t.needMore(credits, w.credits ?? 0));
-    return;
+    return "no-credit";
   }
   if (!already) {
     await saveWallet(user.telegram_user_id, {
@@ -466,7 +508,7 @@ async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
       bought: { ...w.bought, [episodeId]: true },
     });
   }
-  await call("answerCallbackQuery", { callback_query_id: cq.id, text: t.delivering(label) });
+  await call("sendChatAction", { chat_id: chatId, action: "upload_video" }).catch(() => {});
 
   const caption = t.delivered(topic?.title ?? "", label);
   // A real, playable video first: Telegram copies the original post from
@@ -491,13 +533,9 @@ async function buyEpisode(chatId, cq, user, episodeId, page, listPage) {
       await saveWallet(user.telegram_user_id, { ...fresh, credits: (fresh.credits ?? 0) + credits, bought });
     }
     await call("sendMessage", { chat_id: chatId, text: t.deliverFailed });
-    return;
+    return "failed";
   }
-  // The video stays in the chat (with the show's name on it, to keep or
-  // share); the episode list moves down under it, updated, so the next
-  // episode is one tap away without scrolling back up.
-  await clearScreen(cq);
-  await showEpisodeList(chatId, user, episode.topic_id, page, listPage, null);
+  return "ok";
 }
 
 async function showTopUps(chatId, user, cq = null, lead = null) {
@@ -527,7 +565,13 @@ export async function handleCallback(cq, user) {
   const num = (v) => Number(v) || 0;
 
   if (action === "ep") {
-    await buyEpisode(chatId, cq, user, a, num(b), num(c));
+    // An EP button from an older screen still in someone's chat.
+    await call("answerCallbackQuery", { callback_query_id: cq.id }).catch(() => {});
+    const [ep] = rows(await db().from("episodes").select("topic_id").eq("id", a).limit(1));
+    if (!ep) return true;
+    const label = (await orderedEpisodes(ep.topic_id)).find((x) => x.id === a)?.label ?? "";
+    await purchase(chatId, user, a, label);
+    await showEpisodeList(chatId, user, ep.topic_id, 0, num(c), null);
     return true;
   }
   if (action === "hide" && isAdmin(chatId)) {
