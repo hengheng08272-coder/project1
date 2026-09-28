@@ -195,6 +195,7 @@ const L = {
     createHint: "{:inv_create:} ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកផ្ទាំងបង្កើតវិក្កយបត្រ (ចូលដោយស្វ័យប្រវត្តិ)៖",
     stockHint: "{:inv_stock:} ចុចប៊ូតុងខាងក្រោម ដើម្បីមើលស្តុកទំនិញ (ចូលដោយស្វ័យប្រវត្តិ)៖",
     openHint: "{:app_tg:} ជ្រើសផ្ទាំងដែលចង់បើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
+    appHint: "{:app_tg:} ចុចប៊ូតុងខាងក្រោម ដើម្បីបើក (ចូលដោយស្វ័យប្រវត្តិ)៖",
     aCreate: "🧾 បង្កើតវិក្កយបត្រ",
     aInvoices: "📂 វិក្កយបត្រទាំងអស់",
     aReport: "📊 របាយការណ៍",
@@ -269,6 +270,7 @@ const L = {
     createHint: "{:inv_create:} Tap below to open the new-invoice screen (signed in automatically):",
     stockHint: "{:inv_stock:} Tap below to see your stock (signed in automatically):",
     openHint: "{:app_tg:} Pick a screen to open (signed in automatically):",
+    appHint: "{:app_tg:} Tap below to open it (signed in automatically):",
     aCreate: "🧾 Create invoice",
     aInvoices: "📂 All invoices",
     aReport: "📊 Report",
@@ -338,10 +340,15 @@ export function sectionKeyboard(language) {
     // Unpaid, Shop name, Open KH Invoice and Buy Pro all live one tap into
     // Today's summary instead of their own row, so this keyboard stays short
     // enough to leave real room above it -- a payment QR especially.
+    // Every action of the section lives here, under the message box; the
+    // chat above only shows results. `style` colours the main actions.
     keyboard: [
-      [{ text: t.kCreate, emoji: "inv_create" }],
-      [{ text: t.income, emoji: "inv_in" }, { text: t.expense, emoji: "inv_out" }],
-      [{ text: t.kSummary, emoji: "inv_summary" }],
+      [{ text: t.kCreate, emoji: "inv_create", style: "primary" }],
+      [{ text: t.income, emoji: "inv_in", style: "success" }, { text: t.expense, emoji: "inv_out", style: "danger" }],
+      [{ text: t.kSummary, emoji: "inv_summary" }, { text: t.aReport, emoji: "inv_report" }],
+      [{ text: t.kStock, emoji: "inv_stock" }, { text: t.unpaid, emoji: "inv_unpaid" }],
+      [{ text: t.kShop, emoji: "inv_shop" }, { text: t.kOpen, emoji: "inv_app" }],
+      [{ text: t.buy, emoji: "inv_pro", style: "primary" }],
       [{ text: t.kBack, emoji: "inv_back" }],
     ],
     resize_keyboard: true,
@@ -359,7 +366,7 @@ for (const lang of Object.keys(L)) {
   for (const [label, action] of [
     [t.kCreate, "create"], [t.kOpen, "open"], [t.income, "income"], [t.expense, "expense"],
     [t.kSummary, "summary"], [t.unpaid, "unpaid"], [t.kShop, "shop"], [t.buy, "buy"], [t.kBack, "back"],
-    [t.kStock, "stock"],
+    [t.kStock, "stock"], [t.aReport, "report"], [t.aStock, "stock"],
   ]) {
     SECTION_ACTIONS.set(label, action);
     SECTION_ACTIONS.set(bare(label), action);
@@ -373,30 +380,17 @@ export async function enterSection(chatId, user) {
   await showHome(chatId, user);
 }
 
-async function showScreens(chatId, user, createOnly) {
+/**
+ * One app screen, from its keyboard button. Telegram only signs a Mini App
+ * in when it's opened from a button on a message (a keyboard button's Mini
+ * App gets no initData), so this is the one place a button still appears
+ * in the chat: the single "open" for the screen just asked for.
+ */
+async function showAppScreen(chatId, user, label, screen, emoji, hint) {
   const t = tx(user.language);
-  const rows = createOnly
-    ? [[openButton(t, t.aCreate, "invoice", "inv_create")]]
-    : [
-        [openButton(t, t.aCreate, "invoice", "inv_create"), openButton(t, t.aInvoices, "invoices", "inv_summary")],
-        [openButton(t, t.aReport, "report", "inv_report"), openButton(t, t.aStock, "stock", "inv_stock")],
-        [openButton(t, t.aCustomer, "customer", "inv_shop"), openButton(t, t.aDebt, "debt", "inv_unpaid")],
-        [openButton(t, t.aHome)],
-      ];
-  if (!rows[0][0]) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
-  return call("sendMessage", {
-    chat_id: chatId,
-    text: createOnly ? t.createHint : t.openHint,
-    reply_markup: { inline_keyboard: rows },
-  });
-}
-
-/** The Stock screen alone, opened straight from its own keyboard button. */
-async function showStockScreen(chatId, user) {
-  const t = tx(user.language);
-  const stock = openButton(t, t.aStock, "stock", "inv_stock");
-  if (!stock) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
-  return call("sendMessage", { chat_id: chatId, text: t.stockHint, reply_markup: { inline_keyboard: [[stock]] } });
+  const button = openButton(t, label, screen, emoji);
+  if (!button) return call("sendMessage", { chat_id: chatId, text: t.noWebApp });
+  return call("sendMessage", { chat_id: chatId, text: hint, reply_markup: { inline_keyboard: [[{ ...button, style: "primary" }]] } });
 }
 
 /**
@@ -421,8 +415,10 @@ export async function handleSectionButton(chatId, user, text, backToMenu) {
   if (!action || !enabled()) return false;
   awaiting.delete(chatId);
   const t = tx(user.language);
-  if (action === "create") await showScreens(chatId, user, true);
-  else if (action === "open") await showScreens(chatId, user, false);
+  if (action === "create") await showAppScreen(chatId, user, t.aCreate, "invoice", "inv_create", t.createHint);
+  else if (action === "open") await showAppScreen(chatId, user, t.open, undefined, "inv_app", t.appHint);
+  else if (action === "report") await showAppScreen(chatId, user, t.aReport, "report", "inv_report", t.appHint);
+  else if (action === "stock") await showAppScreen(chatId, user, t.aStock, "stock", "inv_stock", t.stockHint);
   else if (action === "income" || action === "expense") {
     awaiting.set(chatId, { kind: "entry", type: action, at: Date.now() });
     await call("sendMessage", { chat_id: chatId, text: t.askAmount(action) });
@@ -487,24 +483,8 @@ export async function showHome(chatId, user) {
     t.tip,
   ];
 
-  const keyboard = [];
-  const create = openButton(t, t.aCreate, "invoice", "inv_create");
-  const open = openButton(t);
-  if (create && open) keyboard.push([create, open]);
-  keyboard.push([
-    { text: t.income, emoji: "inv_in", callback_data: "inv:add:income" },
-    { text: t.expense, emoji: "inv_out", callback_data: "inv:add:expense" },
-  ]);
-  const report = openButton(t, t.aReport, "report", "inv_report");
-  const stock = openButton(t, t.aStock, "stock", "inv_stock");
-  if (report && stock) keyboard.push([report, stock]);
-  keyboard.push([
-    { text: t.unpaid, emoji: "inv_unpaid", callback_data: "inv:unpaid" },
-    { text: t.kShop, emoji: "inv_shop", callback_data: "inv:shop" },
-  ]);
-  keyboard.push([{ text: t.refresh, emoji: "inv_refresh", callback_data: "inv:home" }]);
-  if (!s.subscribed) keyboard.push([{ text: t.buy, emoji: "inv_pro", callback_data: "inv:plans" }]);
-  return call("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } });
+  // Display only: every action is on the section keyboard below.
+  return call("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: sectionKeyboard(user.language) });
 }
 
 async function showUnpaid(chatId, user) {
@@ -516,11 +496,9 @@ async function showUnpaid(chatId, user) {
     (i) =>
       `#${i.invoice_number ?? "—"} · ${i.customer_name || "—"} · ${i.currency === "KHR" ? money(0, i.left) : money(i.left, 0)} · ${i.invoice_date}`
   );
-  const open = openButton(t);
   return call("sendMessage", {
     chat_id: chatId,
     text: `${t.unpaidTitle}\n\n${lines.join("\n")}`,
-    ...(open ? { reply_markup: { inline_keyboard: [[open]] } } : {}),
   });
 }
 
@@ -564,13 +542,6 @@ async function recordEntry(chatId, user, type, text) {
   await call("sendMessage", {
     chat_id: chatId,
     text: `${t.saved(type, amount, entry.description || "—")}\n\n${today}`,
-    reply_markup: {
-      inline_keyboard: [[
-        { text: t.income, emoji: "inv_in", callback_data: "inv:add:income" },
-        { text: t.expense, emoji: "inv_out", callback_data: "inv:add:expense" },
-        { text: t.title, emoji: "inv_app", callback_data: "inv:home" },
-      ]],
-    },
   });
 }
 
