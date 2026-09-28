@@ -446,6 +446,21 @@ const TME_HOST = /^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\//i;
  * else tries the default account, then each connected extra account, and
  * the first one that can resolve the chat wins.
  */
+/**
+ * getEntity, retried once after refreshing the dialog list: a channel an
+ * account joined recently (or one it hasn't touched since the process
+ * restarted) isn't in its entity cache yet, and a bare -100… id then fails
+ * with CHANNEL_INVALID even though the account is a genuine member.
+ */
+export async function resolveEntity(client, chatId) {
+  try {
+    return await client.getEntity(chatId);
+  } catch {
+    await client.getDialogs({ limit: 200 }).catch(() => null);
+    return client.getEntity(chatId);
+  }
+}
+
 export async function getClientForChat(chatId) {
   const tried = [];
   const [known] = rows(
@@ -461,7 +476,7 @@ export async function getClientForChat(chatId) {
   for (const accountId of [...new Set(tried)]) {
     try {
       const client = await getClient({ accountId });
-      const entity = await client.getEntity(chatId);
+      const entity = await resolveEntity(client, chatId);
       return { client, entity, accountId };
     } catch (err) {
       lastErr = err;
