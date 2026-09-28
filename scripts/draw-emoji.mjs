@@ -124,7 +124,32 @@ function paintTile(g, [top, bottom], draw, { sparkles = false, dark = false, swe
   g.stroke();
 }
 
+// Every animated icon also turns a full 360° about its upright axis once
+// per loop (then rests, playing its own motion): the face narrows to its
+// edge and opens again, a touch darker while it faces away. The two logos
+// that already spin with their own coin rim (spin360) aren't turned twice.
+const SPUN_ALREADY = new Set(["logo", "inv_app"]);
+function turned(render) {
+  return (t) => {
+    const src = render(t);
+    const sx = Math.cos(TAU * ease(t / 0.45));
+    const c = createCanvas(S, S);
+    const g = c.getContext("2d");
+    g.translate(50, 50);
+    g.scale(Math.max(0.04, Math.abs(sx)), 1);
+    g.drawImage(src, -50, -50);
+    const dim = 0.3 * (1 - Math.abs(sx));
+    if (dim > 0.01) {
+      g.globalCompositeOperation = "source-atop";
+      g.fillStyle = `rgba(0,0,0,${dim})`;
+      g.fillRect(-50, -50, S, S);
+    }
+    return c;
+  };
+}
+
 function writeVideo(name, render) {
+  if (!SPUN_ALREADY.has(name)) render = turned(render);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `emoji-${name}-`));
   try {
     for (let i = 0; i < FRAMES; i++) {
@@ -249,7 +274,21 @@ function tiled(name, colors, draw, opts = {}) {
 
 /** The operator's own icons: their 100 px WEBM as is, and a 100 px still from the 512 px PNG. */
 async function supplied(name, file) {
-  fs.copyFileSync(path.join(SRC, `${file}.webm`), path.join(OUT, `${name}.webm`));
+  // Their own animation, decoded frame by frame (the libvpx decoder keeps
+  // the alpha channel), re-encoded with the 360° turn every icon has.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `src-${name}-`));
+  try {
+    execFileSync(FFMPEG, ["-y", "-loglevel", "error", "-c:v", "libvpx-vp9", "-i", path.join(SRC, `${file}.webm`), path.join(tmp, "f%03d.png")]);
+    const frames = [];
+    for (const f of fs.readdirSync(tmp).sort()) frames.push(await loadImage(fs.readFileSync(path.join(tmp, f))));
+    writeVideo(name, (t) => {
+      const c = createCanvas(S, S);
+      c.getContext("2d").drawImage(frames[Math.min(frames.length - 1, Math.floor(t * frames.length))], 0, 0, S, S);
+      return c;
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
   const img = await loadImage(fs.readFileSync(path.join(SRC, `${file}.png`)));
   const c = createCanvas(S, S);
   c.getContext("2d").drawImage(img, 0, 0, S, S);
@@ -1443,6 +1482,18 @@ function profileVideo(file, draw, background, scale) {
 // reach ~57 from the centre, so it shrinks to fit the circle's radius of 50.
 profileVideo("saveit-logo", spin360(drawSaveItFace, { rim: "#0A1630", round: true }), "#050B18", 0.9);
 profileVideo("kh-invoice-logo", spin360(drawKhInvoice, { rim: "#07243F" }), "#0B1640", 0.8);
+
+// ------------------------------------------------------------ bank logos
+// The bank / KHQR logos are raster stills with no motion of their own; they
+// get the same 360° turn, so every icon in the pack moves.
+for (const name of ["aba", "bakong", "bank_c", "khqr", "truemoney", "wing"]) {
+  const img = await loadImage(fs.readFileSync(path.join(OUT, `${name}.png`)));
+  writeVideo(name, () => {
+    const c = createCanvas(S, S);
+    c.getContext("2d").drawImage(img, 0, 0, S, S);
+    return c;
+  });
+}
 
 // ------------------------------------------------------------ preview
 if (process.argv[2]) {

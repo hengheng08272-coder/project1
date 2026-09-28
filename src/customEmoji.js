@@ -284,16 +284,17 @@ export async function buildPack(ownerId) {
   added.forEach((token, i) => {
     if (list[i]?.custom_emoji_id) ids[token] = list[i].custom_emoji_id;
   });
-  const previous = (await paymentSettings()).emoji_set;
   try {
     await savePaymentSettings({ emoji: ids, emoji_set: name, emoji_owner: ownerId });
   } catch (err) {
     return `❌ The pack was made (https://t.me/addemoji/${name}) but could not be saved: ${err?.message ?? err}`;
   }
   refusedAt = 0;
-  for (const old of [previous, `saveit_icons_by_${username}`]) {
-    if (old && old !== name) await botApi("deleteStickerSet", { name: old }).catch(() => null);
-  }
+  // The previous pack is kept: shows' poster emoji were added to it (see
+  // addPosterEmoji) and would break if it were deleted. Only the very first,
+  // poster-less pack name is cleaned up.
+  const legacy = `saveit_icons_by_${username}`;
+  if (legacy !== name) await botApi("deleteStickerSet", { name: legacy }).catch(() => null);
   return (
     `{:ok:} Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
     `https://t.me/addemoji/${name}\n\n` +
