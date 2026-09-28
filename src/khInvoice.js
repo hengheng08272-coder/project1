@@ -348,8 +348,9 @@ export function sectionKeyboard(language) {
       [{ text: t.kSummary, emoji: "inv_summary" }, { text: t.aReport, emoji: "inv_report" }],
       [{ text: t.kStock, emoji: "inv_stock" }, { text: t.unpaid, emoji: "inv_unpaid" }],
       [{ text: t.kShop, emoji: "inv_shop" }, { text: t.kOpen, emoji: "inv_app" }],
-      [{ text: t.buy, emoji: "inv_pro", style: "primary" }],
-      [{ text: t.kBack, emoji: "inv_back" }],
+      // 6 rows total: a 7th pushed "back" below the visible keyboard on a
+      // phone screen (Telegram doesn't scroll a reply keyboard into view).
+      [{ text: t.buy, emoji: "inv_pro", style: "primary" }, { text: t.kBack, emoji: "inv_back" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
