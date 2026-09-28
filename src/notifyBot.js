@@ -28,7 +28,35 @@ export async function call(method, body) {
   let data = await post(method, await decorate(body));
   if (!data.ok && refusedEmoji(data)) data = await post(method, await decorate(body, { plain: true }));
   if (!data.ok) console.error(`Telegram ${method} failed:`, JSON.stringify(data));
+  else rememberScreen(method, body, data.result);
   return data;
+}
+
+// The button screens (messages with inline buttons) each private chat has
+// open, so tapping another main-menu button can clear the previous
+// section's screens instead of stacking every section in the chat.
+// Payment approvals and order QRs are never cleared. In memory on purpose:
+// after a restart, old screens just stay.
+const screens = new Map();
+const KEEP = /^bot:(pay_|cancel)/;
+
+function rememberScreen(method, body, result) {
+  if (method !== "sendMessage" && method !== "sendPhoto") return;
+  const chatId = Number(body?.chat_id);
+  const buttons = body?.reply_markup?.inline_keyboard;
+  if (!(chatId > 0) || !Array.isArray(buttons) || !result?.message_id) return;
+  if (buttons.flat().some((b) => KEEP.test(String(b?.callback_data ?? "")))) return;
+  const list = screens.get(chatId) ?? [];
+  list.push(result.message_id);
+  screens.set(chatId, list.slice(-20));
+}
+
+/** Deletes the chat's open button screens (and the tapped menu message). */
+export async function clearScreens(chatId, tappedMessageId = null) {
+  const ids = screens.get(Number(chatId)) ?? [];
+  screens.delete(Number(chatId));
+  if (tappedMessageId) ids.push(tappedMessageId);
+  await Promise.all(ids.map((id) => post("deleteMessage", { chat_id: chatId, message_id: id }).catch(() => null)));
 }
 
 /** DMs the operator about a new payment claim, with Approve/Reject inline buttons. */
