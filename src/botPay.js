@@ -48,10 +48,9 @@ const L = {
     creditPack: (n) => `+${n} Credit`,
     vipPack: (days) => `VIP ${days} ថ្ងៃ · មិនកំណត់`,
     notReady: "ការទូទាត់មិនទាន់បានរៀបចំនៅឡើយទេ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
-    chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 ជ្រើសរើស App ធនាគារដែលអ្នកនឹងប្រើបង់៖`,
     qrCaption: (pkg, amount, ticket) =>
       `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} ៦០ នាទី\n\n` +
-      `{:camera:} ស្កេនដោយ App ធនាគារណាមួយដែលមាន KHQR (ABA, ACLEDA, Wing, Bakong…)\n` +
+      `{:camera:} ស្កេនដោយ App ធនាគារណាមួយ៖ {:aba:} {:bankc:} {:wing:} {:bakong:}\n` +
       `{:bulb:} ទូរស័ព្ទតែមួយ៖ ចុចសង្កត់រូប → រក្សាទុក → បើកក្នុង App ធនាគារ\n` +
       `{:ok:} បង់រួច ផ្ញើ screenshot វិក្កយបត្រមកទីនេះ`,
     cancel: "❌ បោះបង់",
@@ -73,10 +72,9 @@ const L = {
     creditPack: (n) => `+${n} Credit`,
     vipPack: (days) => `VIP ${days} days · unlimited`,
     notReady: "Payments aren't set up yet. Please contact the operator.",
-    chooseBank: (pkg, amount) => `{:khqr:} ${pkg} — $${amount}\n\n🏦 Which bank app will you pay with?`,
     qrCaption: (pkg, amount, ticket) =>
       `{:khqr:} ${pkg} — $${amount}\n{:ticket:} ${ticket} · {:wait:} 60 min\n\n` +
-      `{:camera:} Scan with any KHQR bank app (ABA, ACLEDA, Wing, Bakong…)\n` +
+      `{:camera:} Scan with any bank app: {:aba:} {:bankc:} {:wing:} {:bakong:}\n` +
       `{:bulb:} Same phone: long-press the picture → save → open it in your bank app\n` +
       `{:ok:} Paid? Send the receipt screenshot here`,
     cancel: "❌ Cancel",
@@ -210,9 +208,12 @@ function newTicket() {
 const serviceName = () => "SaveIt KH";
 
 /**
- * A package was tapped: build its QR and send it. With two banks set up the
- * payer first picks which app they will pay from (`bank` null), because the
- * two banks don't accept the same QR -- see botConfig.js.
+ * A package was tapped: build its QR and send it. One KHQR for everyone --
+ * whichever bank the operator registered it with, any bank's own app can
+ * scan a standard KHQR to pay it, so there's no "which bank" question for
+ * the payer to answer first. (The `bank` param stays for old inline
+ * buttons still sitting in someone's chat from before this; see
+ * handlePayCallback's "bank" case.)
  */
 async function startOrder(chatId, user, packageId, bank = null) {
   const s = t(user.language);
@@ -226,20 +227,6 @@ async function startOrder(chatId, user, packageId, bank = null) {
     return;
   }
   const amount = Number(pkg.price_usd);
-
-  if (!bank && primary && alt) {
-    await call("sendMessage", {
-      chat_id: chatId,
-      text: s.chooseBank(packageLabel(pkg, user.language), amount.toFixed(2)),
-      reply_markup: {
-        inline_keyboard: [[
-          { text: `🏦 ${extra.primary_label}`, emoji: "aba", callback_data: `bot:bank:${pkg.id}~p` },
-          { text: `🏦 ${extra.alt_label}`, emoji: "khqr", callback_data: `bot:bank:${pkg.id}~a` },
-        ]],
-      },
-    });
-    return;
-  }
 
   const useAlt = (bank === "a" && Boolean(alt)) || !primary;
   const template = useAlt ? alt : primary;
@@ -524,7 +511,7 @@ export async function handleAdminPayCommand(chatId, text) {
   if (/^\/setqr$/i.test(text)) {
     await call("sendMessage", {
       chat_id: chatId,
-      text: "Send your ABA KHQR screenshot as a photo with the caption /setqr (or /setqr <KHQR text>).",
+      text: "Send your bank's KHQR screenshot as a photo with the caption /setqr (or /setqr <KHQR text>).",
     });
     return true;
   }

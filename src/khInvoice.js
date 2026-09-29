@@ -170,7 +170,7 @@ const L = {
     locked: "{:lock:} គណនី KH Invoice របស់អ្នកត្រូវបានចាក់សោ។ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
     unpaidTitle: "{:inv_create:} វិក្កយបត្រមិនទាន់បង់",
     unpaidNone: "{:party:} គ្មានវិក្កយបត្រជំពាក់ទេ!",
-    plans: "{:m_pro:} KH Invoice Pro — ជ្រើសរើសគម្រោង\n\n{:ok:} ប្រើមុខងារទាំងអស់ គ្មានដែនកំណត់\n{:ok:} បង់តាម ABA / KHQR ធនាគារណាក៏បាន\n{:ok:} បើកដំណើរការភ្លាមៗ ក្រោយបង់",
+    plans: "{:m_pro:} KH Invoice Pro — ជ្រើសរើសគម្រោង\n\n{:ok:} ប្រើមុខងារទាំងអស់ គ្មានដែនកំណត់\n{:ok:} ស្កេនដោយ App ធនាគារណាមួយ (KHQR)\n{:ok:} បើកដំណើរការភ្លាមៗ ក្រោយបង់",
     loginAsk:
       "{:lock:} ចូល KH Invoice តាម Telegram?\n\nមាននរណាម្នាក់ (សង្ឃឹមថាអ្នក) កំពុងចូល KH Invoice នៅលើកម្មវិធីរុករក។\n{:warn:} ចុច «បាទ/ចាស» លុះត្រាតែអ្នកទើបតែចុច «ចូលតាម Telegram» ដោយខ្លួនឯង។",
     loginYes: "✅ បាទ/ចាស ចូល",
@@ -245,7 +245,7 @@ const L = {
     locked: "{:lock:} Your KH Invoice account is locked. Please contact the operator.",
     unpaidTitle: "{:inv_create:} Unpaid invoices",
     unpaidNone: "{:party:} No unpaid invoices!",
-    plans: "{:m_pro:} KH Invoice Pro — choose a plan\n\n{:ok:} Every feature, no limits\n{:ok:} Pay with ABA / any KHQR bank\n{:ok:} Switched on the moment you pay",
+    plans: "{:m_pro:} KH Invoice Pro — choose a plan\n\n{:ok:} Every feature, no limits\n{:ok:} Scan with any bank app (KHQR)\n{:ok:} Switched on the moment you pay",
     loginAsk:
       "{:lock:} Sign in to KH Invoice with Telegram?\n\nSomeone (hopefully you) is signing in to KH Invoice in a browser.\n{:warn:} Only tap “Yes” if you just pressed “Sign in with Telegram” yourself.",
     loginYes: "✅ Yes, sign me in",
