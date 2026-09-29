@@ -62,6 +62,14 @@ const MENU = [
   },
   { action: "emoji", emoji: "sparkle", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
+    action: "translate",
+    emoji: "m_language",
+    style: "success",
+    km: "🌐 បកប្រែភាសា",
+    en: "🌐 Translate",
+    aliases: ["🌐 Translate · ខ្មែរ ⇄ English"],
+  },
+  {
     action: "buy",
     emoji: "credit",
     style: "success",
@@ -130,7 +138,8 @@ export function mainKeyboard(language) {
   const rows = [
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
-    [button("watch"), button("account")],
+    [button("translate"), button("watch")],
+    [button("account")],
     [button("buy")],
     [button("referral")],
   ];
