@@ -23,6 +23,7 @@ import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
 import * as emojiMaker from "./emojiMaker.js";
 import * as khInvoice from "./khInvoice.js";
+import * as translate from "./translate.js";
 import * as watch from "./watch.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
@@ -328,6 +329,7 @@ export async function handleMessage(message) {
     khInvoice.cancelPending(chatId);
     watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
+    if (action !== "translate") translate.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -335,6 +337,8 @@ export async function handleMessage(message) {
   switch (action) {
     case "emoji":
       return emojiMaker.ask(chatId, user);
+    case "translate":
+      return translate.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -364,7 +368,10 @@ export async function handleMessage(message) {
   }
 
   const url = URL_PATTERN.exec(text)?.[0];
-  if (url) khInvoice.cancelPending(chatId);
+  if (url) {
+    khInvoice.cancelPending(chatId);
+    translate.cancel(chatId);
+  } else if (await translate.handleText(chatId, user, text)) return;
   else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;
   if (!url) {
@@ -647,6 +654,7 @@ function commandAction(text) {
     case "/premium": return "premium";
     case "/invoice": return "invoice";
     case "/emoji": return "emoji";
+    case "/translate": return "translate";
     default: return null;
   }
 }
