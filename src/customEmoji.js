@@ -93,6 +93,22 @@ export const EMOJI = {
 // user just made, say), shown as ✨ where custom emoji can't be.
 const TOKEN = /\{:([a-z_]+|\d{5,}):\}/g;
 
+// Text styling, written as paired tags: {b}bold{/b}, {quote}...{/quote}. They
+// become message entities rather than a parse_mode, for the same reason the
+// bot never uses parse_mode: a stray "_" in a username must not be able to
+// make Telegram refuse the whole message. An unpaired tag is dropped, never
+// sent as literal text.
+const STYLES = {
+  b: "bold",
+  i: "italic",
+  u: "underline",
+  s: "strikethrough",
+  quote: "blockquote",
+  xquote: "expandable_blockquote", // long lists: collapsed, "show more" to open
+};
+const STYLE_TAG = new RegExp(`\\{(/?)(${Object.keys(STYLES).join("|")})\\}`, "g");
+const SCAN = new RegExp(`${TOKEN.source}|${STYLE_TAG.source}`, "g");
+
 // Once Telegram refuses them (owner without Premium, or ids of a pack that
 // was deleted), stop trying for a while instead of paying a failed request on
 // every message. A rebuilt pack clears it at once.
@@ -106,13 +122,35 @@ async function emojiIds() {
   return (await paymentSettings()).emoji ?? {};
 }
 
-/** Replaces tokens in `text`; returns the text and the custom_emoji entities. */
-function resolve(text, ids, existing = []) {
-  if (typeof text !== "string" || !text.includes("{:")) return { text, entities: existing };
+/**
+ * Replaces tokens in `text`; returns the text and the entities (custom emoji
+ * and, when `styles` is on, the {b}/{quote} styling). With `styles` off the
+ * tags are still removed -- only the formatting is skipped -- which is what
+ * the "resend plain" retry uses, so a styling problem can't block a message.
+ */
+export function resolve(text, ids, existing = [], styles = true) {
+  const hasTokens = typeof text === "string" && (text.includes("{:") || /\{\/?(?:b|i|u|s|quote|xquote)\}/.test(text));
+  if (!hasTokens) return { text, entities: existing };
   const entities = [];
+  const open = []; // styles opened and not yet closed: { type, offset }
   let out = "";
   let last = 0;
-  for (const m of text.matchAll(TOKEN)) {
+  for (const m of text.matchAll(SCAN)) {
+    if (m[1] === undefined) {
+      // A style tag: m[2] is "/" for a closing one, m[3] the style.
+      out += text.slice(last, m.index);
+      last = m.index + m[0].length;
+      const style = STYLES[m[3]];
+      if (m[2] === "") {
+        open.push({ type: style, offset: out.length });
+      } else {
+        const at = open.findLastIndex((o) => o.type === style);
+        if (at === -1) continue;
+        const [{ offset }] = open.splice(at, 1);
+        if (styles && out.length > offset) entities.push({ type: style, offset, length: out.length - offset });
+      }
+      continue;
+    }
     const byId = /^\d+$/.test(m[1]);
     const entry = byId ? [null, "✨"] : EMOJI[m[1]];
     if (!entry) continue;
@@ -125,6 +163,8 @@ function resolve(text, ids, existing = []) {
     last = m.index + m[0].length;
   }
   out += text.slice(last);
+  // Telegram wants entities in text order, longer (outer) ones first.
+  entities.sort((a, b) => a.offset - b.offset || b.length - a.length);
   return { text: out, entities: [...existing, ...entities] };
 }
 
@@ -158,18 +198,18 @@ export async function decorate(body, { plain = false } = {}) {
   const ids = plain ? NONE : await emojiIds();
   const next = { ...body };
   if (typeof next.text === "string") {
-    const r = resolve(next.text, ids, next.entities ?? []);
+    const r = resolve(next.text, ids, next.entities ?? [], !plain);
     next.text = r.text;
     if (r.entities.length) next.entities = r.entities;
   }
   if (typeof next.caption === "string") {
-    const r = resolve(next.caption, ids, next.caption_entities ?? []);
+    const r = resolve(next.caption, ids, next.caption_entities ?? [], !plain);
     next.caption = r.text;
     if (r.entities.length) next.caption_entities = r.entities;
   }
   // editMessageMedia carries its caption inside `media`.
   if (next.media && typeof next.media === "object" && typeof next.media.caption === "string") {
-    const r = resolve(next.media.caption, ids, next.media.caption_entities ?? []);
+    const r = resolve(next.media.caption, ids, next.media.caption_entities ?? [], !plain);
     next.media = { ...next.media, caption: r.text, ...(r.entities.length ? { caption_entities: r.entities } : {}) };
   }
   if (next.reply_markup) next.reply_markup = decorateButtons(next.reply_markup, ids);

@@ -30,6 +30,8 @@ import { call } from "./notifyBot.js";
 // A payer has this long to pay one QR before the order lapses. Bakong
 // payments land in seconds, so this is only generous for the screenshot path.
 const ORDER_TTL_MS = 60 * 60 * 1000;
+// Telegram's fixed id for the 🎉 message effect (sendMessage's message_effect_id).
+const CONFETTI_EFFECT = "5046509860389126442";
 const BAKONG_BASE = (process.env.BAKONG_API_BASE || "https://api-bakong.nbc.gov.kh").replace(/\/+$/, "");
 
 export function isAdminChat(chatId) {
@@ -39,7 +41,7 @@ export function isAdminChat(chatId) {
 const L = {
   km: {
     creditScreen: (standing) =>
-      `{:credit:} Credit របស់អ្នក\n${standing}\n\n` +
+      `{:credit:} {b}Credit របស់អ្នក{/b}\n${standing}\n\n` +
       `📌 1 Credit = ទាញវីដេអូ Telegram ឯកជន 1\n` +
       `{:m_free:} YouTube · FB · IG · TikTok — ឥតគិតថ្លៃ មិនប្រើ Credit\n\n` +
       `{:m_buy:} ជ្រើសរើសកញ្ចប់៖`,
@@ -57,13 +59,13 @@ const L = {
     cancelled: "បានបោះបង់ការបញ្ជាទិញ។",
     screenshotReceived: "{:ok:} ទទួលបាន screenshot។ កំពុងរង់ចាំការបញ្ជាក់ — ជាធម្មតាតិចជាងពីរបីនាទី។",
     noPendingOrder: "មិនមានការបញ្ជាទិញកំពុងរង់ចាំទេ។ ចុច {:diamond:} ទិញ ដើម្បីចាប់ផ្ដើម។",
-    grantedCredit: (n, left) => `{:party:} ការទូទាត់បានបញ្ជាក់! +${n} Credit\n{:credit:} Credit នៅសល់៖ ${left}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
-    grantedVip: (until) => `{:party:} ការទូទាត់បានបញ្ជាក់!\n{:m_pro:} VIP មិនកំណត់ — រហូតដល់ ${until}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
+    grantedCredit: (n, left) => `{:party:} {b}ការទូទាត់បានបញ្ជាក់!{/b} +${n} Credit\n{:credit:} Credit នៅសល់៖ ${left}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
+    grantedVip: (until) => `{:party:} {b}ការទូទាត់បានបញ្ជាក់!{/b}\n{:m_pro:} VIP មិនកំណត់ — រហូតដល់ ${until}\n\nអរគុណ! ផ្ញើតំណ Telegram មកបានឥឡូវនេះ។`,
     rejected: "{:fail:} ការទូទាត់មិនត្រូវបានបញ្ជាក់ទេ។ បើអ្នកបានបង់ពិតប្រាកដ សូមទាក់ទងអ្នកគ្រប់គ្រង។",
   },
   en: {
     creditScreen: (standing) =>
-      `{:credit:} Your Credit\n${standing}\n\n` +
+      `{:credit:} {b}Your Credit{/b}\n${standing}\n\n` +
       `📌 1 Credit = 1 private Telegram video\n` +
       `{:m_free:} YouTube · FB · IG · TikTok — free, no Credit used\n\n` +
       `{:m_buy:} Choose a package:`,
@@ -81,8 +83,8 @@ const L = {
     cancelled: "Order cancelled.",
     screenshotReceived: "{:ok:} Screenshot received. Waiting for confirmation — usually a few minutes.",
     noPendingOrder: "You have no pending order. Tap {:diamond:} Buy to start.",
-    grantedCredit: (n, left) => `{:party:} Payment confirmed! +${n} Credit\n{:credit:} Credit left: ${left}\n\nThank you! Send a Telegram link any time.`,
-    grantedVip: (until) => `{:party:} Payment confirmed!\n{:m_pro:} VIP unlimited — until ${until}\n\nThank you! Send a Telegram link any time.`,
+    grantedCredit: (n, left) => `{:party:} {b}Payment confirmed!{/b} +${n} Credit\n{:credit:} Credit left: ${left}\n\nThank you! Send a Telegram link any time.`,
+    grantedVip: (until) => `{:party:} {b}Payment confirmed!{/b}\n{:m_pro:} VIP unlimited — until ${until}\n\nThank you! Send a Telegram link any time.`,
     rejected: "{:fail:} The payment couldn't be confirmed. If you really paid, please contact the operator.",
   },
 };
@@ -341,7 +343,13 @@ async function grant(order, confirmedBy, bankHash = null) {
   } else {
     text = s.grantedVip(formatDate(patch.premium_until));
   }
-  await call("sendMessage", { chat_id: order.chat_id, text });
+  // The 🎉 message effect plays a confetti burst behind the confirmation.
+  // Effects only exist in private chats and Telegram refuses an id it doesn't
+  // know, so if this send fails the same message goes out again without it --
+  // a buyer must never miss their confirmation over decoration.
+  const withEffect = Number(order.chat_id) > 0 ? { message_effect_id: CONFETTI_EFFECT } : {};
+  const sent = await call("sendMessage", { chat_id: order.chat_id, text, ...withEffect });
+  if (!sent?.ok && withEffect.message_effect_id) await call("sendMessage", { chat_id: order.chat_id, text });
   return true;
 }
 
