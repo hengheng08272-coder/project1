@@ -13,6 +13,9 @@ const TEXT = {
       "ផ្ញើអត្ថបទដែលចង់បកប្រែមកខ្ញុំ — ខ្ញុំនឹងស្គាល់ភាសា ហើយបកអោយភ្លាម (ខ្មែរ ⇄ អង់គ្លេស ស្វ័យប្រវត្តិ)។",
     working: "{:wait:} កំពុងបកប្រែ…",
     failed: "{:fail:} បកប្រែមិនបានទេ សូមសាកម្ដងទៀត។",
+    inlineHint:
+      "\n\n{:bulb:} ថ្មី! បកប្រែក្នុង chat ណាក៏បាន — វាយ {bot} រួចអត្ថបទ ក្នុងប្រអប់សារ ហើយចុចលទ្ធផលដើម្បីផ្ញើ។",
+    inlineButton: "🌐 បកប្រែក្នុង chat ផ្សេង",
   },
   en: {
     ask:
@@ -20,6 +23,9 @@ const TEXT = {
       "Send me the text you want translated — I'll detect the language and translate it automatically (Khmer ⇄ English).",
     working: "{:wait:} Translating…",
     failed: "{:fail:} Couldn't translate that. Please try again.",
+    inlineHint:
+      "\n\n{:bulb:} New! Translate in any chat — type {bot} followed by your text in the message box, then tap a result to send it.",
+    inlineButton: "🌐 Translate in another chat",
   },
 };
 
@@ -28,9 +34,21 @@ const TEXT = {
 const waiting = new Map();
 const WAIT_MS = 10 * 60_000;
 
-export function ask(chatId, user) {
+let botName = null;
+async function botUsername() {
+  if (!botName) botName = (await call("getMe", {}))?.result?.username ?? null;
+  return botName;
+}
+
+export async function ask(chatId, user) {
   waiting.set(chatId, { at: Date.now() });
-  return call("sendMessage", { chat_id: chatId, text: (TEXT[user.language] ?? TEXT.km).ask });
+  const t = TEXT[user.language] ?? TEXT.km;
+  const name = await botUsername().catch(() => null);
+  return call("sendMessage", {
+    chat_id: chatId,
+    text: t.ask + t.inlineHint.replace("{bot}", name ? `@${name}` : "@bot"),
+    reply_markup: { inline_keyboard: [[{ text: t.inlineButton, style: "primary", switch_inline_query: "" }]] },
+  });
 }
 
 export function cancel(chatId) {
@@ -61,6 +79,37 @@ export async function translateText(text, targetLang) {
   const translated = (data?.[0] ?? []).map((chunk) => chunk[0]).join("");
   const detected = data?.[2] ?? null;
   return { translated, detected };
+}
+
+const LANG_NAMES = { km: "🇰🇭 ខ្មែរ", en: "🇬🇧 English", zh: "🇨🇳 中文", th: "🇹🇭 ไทย", vi: "🇻🇳 Tiếng Việt" };
+
+/**
+ * Inline mode: "@bot some text" typed in any chat. Offers the text in Khmer
+ * and English (minus whichever it already is), plus Chinese / Thai /
+ * Vietnamese; tapping one sends the translation into that chat. Needs inline
+ * mode switched on once in BotFather (/setinline).
+ */
+export async function handleInlineQuery(iq) {
+  const text = String(iq?.query ?? "").trim();
+  if (text.length < 2) {
+    return call("answerInlineQuery", { inline_query_id: iq.id, results: [], cache_time: 5 });
+  }
+  const targets = ["km", "en", "zh", "th", "vi"];
+  const settled = await Promise.allSettled(targets.map((lang) => translateText(text, lang)));
+  const detected = settled.find((s) => s.status === "fulfilled")?.value.detected;
+  const results = [];
+  settled.forEach((s, i) => {
+    const lang = targets[i];
+    if (s.status !== "fulfilled" || !s.value.translated || lang === detected) return;
+    results.push({
+      type: "article",
+      id: `${lang}-${iq.id}`.slice(0, 64),
+      title: LANG_NAMES[lang],
+      description: s.value.translated.slice(0, 200),
+      input_message_content: { message_text: s.value.translated },
+    });
+  });
+  return call("answerInlineQuery", { inline_query_id: iq.id, results, cache_time: 300, is_personal: false });
 }
 
 /**

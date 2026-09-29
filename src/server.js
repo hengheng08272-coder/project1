@@ -20,6 +20,7 @@ import * as forwarder from "./forwarder.js";
 import * as khInvoice from "./khInvoice.js";
 import * as watch from "./watch.js";
 import { handleCallback as handleBotCallback, handleMessage as handleLinkBotMessage } from "./linkBot.js";
+import * as translate from "./translate.js";
 import { recordManualUpload } from "./library.js";
 import * as mirror from "./mirror.js";
 import * as pageResolve from "./pageResolve.js";
@@ -969,6 +970,12 @@ app.post(
       return res.json({ ok: true });
     }
 
+    const inline = req.body?.inline_query;
+    if (inline) {
+      spawn(translate.handleInlineQuery(inline), `inline query from ${inline.from?.id}`);
+      return res.json({ ok: true });
+    }
+
     const cq = req.body?.callback_query;
     if (!cq) return res.json({ ok: true });
 
@@ -1043,7 +1050,7 @@ async function registerBotWebhook() {
   if (!config.telegramLoginBotToken || !config.publicUrl) return;
   const url = `${config.publicUrl.replace(/\/$/, "")}/api/telegram-bot/webhook`;
   try {
-    const result = await botApi("setWebhook", { url, allowed_updates: ["message", "callback_query"] });
+    const result = await botApi("setWebhook", { url, allowed_updates: ["message", "callback_query", "inline_query"] });
     if (result?.ok) console.log(`Telegram bot webhook set to ${url}`);
   } catch (err) {
     console.error("Could not set the Telegram bot webhook:", err?.message ?? err);
