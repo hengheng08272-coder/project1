@@ -23,6 +23,7 @@ import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
 import * as emojiMaker from "./emojiMaker.js";
+import * as imageQa from "./imageQa.js";
 import * as khInvoice from "./khInvoice.js";
 import * as translate from "./translate.js";
 import * as watch from "./watch.js";
@@ -300,6 +301,11 @@ export async function handleMessage(message) {
   // handling below, since a photo usually has no text at all.
   if (message.photo && (await botPay.handlePhoto(message, user))) return;
 
+  // Image Q&A (optional, see imageQa.js): a photo the 📷 button is waiting
+  // for, or any photo with a caption asking about it. A bare photo that
+  // matches none of the above falls through unchanged (the welcome screen).
+  if (message.photo && (await imageQa.handleMessage(message, user))) return;
+
   // A message forwarded out of the storage channel names it, so the operator
   // never has to dig a raw -100... id out of Telegram.
   if (message.forward_from_chat && botPay.isAdminChat(chatId)) {
@@ -331,6 +337,7 @@ export async function handleMessage(message) {
     watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
     if (action !== "translate") translate.cancel(chatId);
+    if (action !== "image") imageQa.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -340,6 +347,8 @@ export async function handleMessage(message) {
       return emojiMaker.ask(chatId, user);
     case "translate":
       return translate.ask(chatId, user);
+    case "image":
+      return imageQa.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -372,6 +381,7 @@ export async function handleMessage(message) {
   if (url) {
     khInvoice.cancelPending(chatId);
     translate.cancel(chatId);
+    imageQa.cancel(chatId);
   } else if (await translate.handleText(chatId, user, text)) return;
   else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;

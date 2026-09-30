@@ -73,21 +73,22 @@ const SYSTEM_PROMPT = {
     "Answer briefly and clearly in English. If the question isn't about this bot, or you're not sure of the answer, say so plainly and suggest contacting the operator instead of guessing.",
 };
 
-/**
- * Answers a free-form question about the bot, or returns null when the
- * feature is off, the question was skipped, the call failed, or the daily
- * cap was reached -- every case the caller treats the same way: fall back
- * to the ordinary "not a link" message. Never throws.
- */
-export async function answerFaq(userId, question, language) {
-  if (!config.nvidiaApiKey) return null;
+const VISION_SYSTEM_PROMPT = {
+  km:
+    "អ្នកកំពុងមើលរូបភាពមួយសន្លឹកដែលអ្នកប្រើប្រាស់ផ្ញើមក Telegram bot ។ ឆ្លើយសំណួររបស់គេអំពីរូបភាពនេះឲ្យខ្លី ច្បាស់លាស់ ជាភាសាខ្មែរ ។ " +
+    "បើគ្មានសំណួរច្បាស់លាស់ សូមពណ៌នារូបភាពនេះខ្លីៗ ។ បើមើលមិនច្បាស់ ឬមិនប្រាកដ សូមនិយាយត្រង់ៗ កុំស្មាន ។",
+  en:
+    "You are looking at a photo a user sent to a Telegram bot. Answer their question about the photo briefly and clearly in English. " +
+    "If there's no specific question, briefly describe the photo. If something isn't clear or you're not sure, say so plainly instead of guessing.",
+};
 
-  const trimmed = String(question ?? "").trim();
-  // A bare word or two ("hi", "ok") is rarely an actual question, and not
-  // worth spending a shared quota's call on.
-  if (trimmed.length < 4) return null;
-  if (!withinDailyCap(userId)) return null;
+const DEFAULT_IMAGE_QUESTION = {
+  km: "រូបភាពនេះជាអ្វី? សូមពណ៌នាខ្លីៗ។",
+  en: "What is this photo? Please describe it briefly.",
+};
 
+/** POSTs one chat-completions call and returns the trimmed, length-capped reply, or null on any failure. Never throws. */
+async function callChat(messages) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -104,14 +105,11 @@ export async function answerFaq(userId, question, language) {
         stream: false,
         temperature: 0.4,
         max_tokens: 400,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT[language] ?? SYSTEM_PROMPT.en },
-          { role: "user", content: trimmed.slice(0, MAX_QUESTION_CHARS) },
-        ],
+        messages,
       }),
     });
     if (!res.ok) {
-      console.error(`AI FAQ reply failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+      console.error(`AI reply failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
       return null;
     }
     const data = await res.json();
@@ -119,9 +117,59 @@ export async function answerFaq(userId, question, language) {
     if (!reply) return null;
     return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}…` : reply;
   } catch (err) {
-    console.error("AI FAQ reply failed:", err?.message ?? err);
+    console.error("AI reply failed:", err?.message ?? err);
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Answers a free-form question about the bot, or returns null when the
+ * feature is off, the question was skipped, the call failed, or the daily
+ * cap was reached -- every case the caller treats the same way: fall back
+ * to the ordinary "not a link" message. Never throws.
+ */
+export async function answerFaq(userId, question, language) {
+  if (!config.nvidiaApiKey) return null;
+
+  const trimmed = String(question ?? "").trim();
+  // A bare word or two ("hi", "ok") is rarely an actual question, and not
+  // worth spending a shared quota's call on.
+  if (trimmed.length < 4) return null;
+  if (!withinDailyCap(userId)) return null;
+
+  return callChat([
+    { role: "system", content: SYSTEM_PROMPT[language] ?? SYSTEM_PROMPT.en },
+    { role: "user", content: trimmed.slice(0, MAX_QUESTION_CHARS) },
+  ]);
+}
+
+/**
+ * Answers a question about a photo (image Q&A -- see imageQa.js), or returns
+ * null under the same conditions as answerFaq, which it shares a daily cap
+ * with: off, no key, cap reached, or the call failed. Never throws.
+ *
+ * `imageBuffer` must already be a JPEG under NVIDIA's ~180,000-character
+ * inline base64 limit -- imageQa.js picks a small enough Telegram photo size
+ * before calling this, so nothing here needs to resize or re-encode it.
+ */
+export async function answerImageQuestion(userId, imageBuffer, question, language) {
+  if (!config.nvidiaApiKey) return null;
+  if (!withinDailyCap(userId)) return null;
+
+  const trimmed = String(question ?? "").trim();
+  const prompt = trimmed ? trimmed.slice(0, MAX_QUESTION_CHARS) : DEFAULT_IMAGE_QUESTION[language] ?? DEFAULT_IMAGE_QUESTION.en;
+  const dataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
+
+  return callChat([
+    { role: "system", content: VISION_SYSTEM_PROMPT[language] ?? VISION_SYSTEM_PROMPT.en },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: dataUri } },
+      ],
+    },
+  ]);
 }

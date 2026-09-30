@@ -69,6 +69,13 @@ const MENU = [
     en: "🌐 Translate",
     aliases: ["🌐 Translate · ខ្មែរ ⇄ English"],
   },
+  // Only shown (see mainKeyboard) when NVIDIA_API_KEY is set -- see aiReply.js.
+  {
+    action: "image",
+    emoji: "m_camera",
+    km: "📷 សួរអំពីរូបភាព",
+    en: "📷 Ask about a Photo",
+  },
   {
     action: "buy",
     emoji: "credit",
@@ -139,6 +146,7 @@ export function mainKeyboard(language) {
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("translate"), button("watch")],
+    ...(config.nvidiaApiKey ? [[button("image")]] : []),
     [button("account")],
     [button("buy")],
     [button("referral")],
