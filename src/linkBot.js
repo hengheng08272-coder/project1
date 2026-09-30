@@ -26,6 +26,7 @@ import * as emojiMaker from "./emojiMaker.js";
 import * as imageQa from "./imageQa.js";
 import * as khInvoice from "./khInvoice.js";
 import * as translate from "./translate.js";
+import * as videoSummary from "./videoSummary.js";
 import * as watch from "./watch.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
@@ -338,6 +339,7 @@ export async function handleMessage(message) {
     if (action !== "emoji") emojiMaker.cancel(chatId);
     if (action !== "translate") translate.cancel(chatId);
     if (action !== "image") imageQa.cancel(chatId);
+    if (action !== "summarize") videoSummary.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -349,6 +351,8 @@ export async function handleMessage(message) {
       return translate.ask(chatId, user);
     case "image":
       return imageQa.ask(chatId, user);
+    case "summarize":
+      return videoSummary.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -376,6 +380,11 @@ export async function handleMessage(message) {
     default:
       break;
   }
+
+  // Checked before the URL branch below (unlike translate/watch/khInvoice's
+  // text handlers), since this one's whole job is reading a video *link* --
+  // otherwise it would never see one, only ever the default download flow.
+  if (await videoSummary.handleText(chatId, user, text)) return;
 
   const url = URL_PATTERN.exec(text)?.[0];
   if (url) {

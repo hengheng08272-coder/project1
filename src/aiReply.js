@@ -27,6 +27,11 @@ const TIMEOUT_MS = 15_000;
 // faster one against a quota this bot doesn't own.
 const MAX_REPLY_CHARS = 900;
 const MAX_QUESTION_CHARS = 500;
+// A video transcript is much longer than a question, but still cut well
+// short of the model's own context window -- a summary only needs the gist,
+// not every word, and a shorter prompt is a cheaper, faster call against a
+// quota this bot doesn't own.
+const MAX_TRANSCRIPT_CHARS = 6_000;
 
 const PER_USER_DAILY_LIMIT = 8;
 const GLOBAL_DAILY_LIMIT = 300;
@@ -85,6 +90,15 @@ const VISION_SYSTEM_PROMPT = {
 const DEFAULT_IMAGE_QUESTION = {
   km: "រូបភាពនេះជាអ្វី? សូមពណ៌នាខ្លីៗ។",
   en: "What is this photo? Please describe it briefly.",
+};
+
+const SUMMARY_SYSTEM_PROMPT = {
+  km:
+    "ខាងក្រោមជា caption ស្វ័យប្រវត្តិរបស់វីដេអូមួយ (អាចមានកំហុសខ្លះ ព្រោះជាកម្មវិធីស្គាល់សំឡេងស្វ័យប្រវត្តិ ហើយអាចជាភាសាអង់គ្លេស) ។ " +
+    "សូមសង្ខេបខ្លឹមសារសំខាន់ៗខ្លីៗជាភាសាខ្មែរ ជាចំណុចៗ ។ បើអត្ថបទមិនច្បាស់ ឬខ្លីពេក សូមនិយាយត្រង់ៗថាសង្ខេបមិនបាន កុំស្មាន ។",
+  en:
+    "Below is a video's auto-generated captions (may have errors -- it's automatic speech recognition, and may be in English). " +
+    "Summarize the key points briefly in English, as a short list. If the text is unclear or too short to summarize, say so plainly instead of guessing.",
 };
 
 /** POSTs one chat-completions call and returns the trimmed, length-capped reply, or null on any failure. Never throws. */
@@ -171,5 +185,26 @@ export async function answerImageQuestion(userId, imageBuffer, question, languag
         { type: "image_url", image_url: { url: dataUri } },
       ],
     },
+  ]);
+}
+
+/**
+ * Summarizes a video's transcript (its own captions, or auto-generated ones
+ * when that's all the site provides -- see videoSummary.js), or returns null
+ * under the same conditions as answerFaq, which it shares a daily cap with:
+ * off, no key, an empty/too-short transcript, cap reached, or the call
+ * failed. Never throws.
+ */
+export async function summarizeTranscript(userId, transcript, language) {
+  if (!config.nvidiaApiKey) return null;
+
+  const trimmed = String(transcript ?? "").trim();
+  // A few words of captions is rarely a real transcript worth summarizing.
+  if (trimmed.length < 30) return null;
+  if (!withinDailyCap(userId)) return null;
+
+  return callChat([
+    { role: "system", content: SUMMARY_SYSTEM_PROMPT[language] ?? SUMMARY_SYSTEM_PROMPT.en },
+    { role: "user", content: trimmed.slice(0, MAX_TRANSCRIPT_CHARS) },
   ]);
 }

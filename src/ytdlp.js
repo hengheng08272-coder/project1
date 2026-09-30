@@ -276,3 +276,85 @@ export async function downloadWithYtdlp(sourceUrl, referer, fileNameHint, onProg
   await fs.rm(localPath, { force: true }).catch(() => {});
   throw new Error(`yt-dlp failed after ${MAX_ATTEMPTS} attempts: ${lastError}`);
 }
+
+const CAPTIONS_TIMEOUT_MS = 60_000;
+// A VTT cue timestamp line, e.g. "00:00:01.000 --> 00:00:04.000 align:start".
+const VTT_TIMESTAMP_LINE = /-->/;
+// Inline word-level timing tags YouTube's auto-captions embed, e.g.
+// "<00:00:01.360><c> word</c>" -- stripped along with any other markup tag.
+const VTT_TAG = /<[^>]*>/g;
+
+/** Turns one .vtt file's contents into plain text: no header, timestamps, cue numbers, or markup, and no back-to-back repeated lines (YouTube's auto-captions re-print the same rolling line across several cues). */
+export function vttToText(vtt) {
+  const lines = vtt.split(/\r?\n/);
+  const out = [];
+  for (const raw of lines) {
+    // Collapsed here, not just at the final join, so a rolling-caption line
+    // compares equal whether or not it still carries the extra whitespace
+    // stripping its own word-timing tags left behind.
+    const line = raw.replace(VTT_TAG, "").replace(/\s+/g, " ").trim();
+    if (!line || line === "WEBVTT" || /^(Kind|Language):/.test(line)) continue;
+    if (VTT_TIMESTAMP_LINE.test(raw) || /^\d+$/.test(line)) continue;
+    if (out[out.length - 1] === line) continue; // rolling-caption repeat
+    out.push(line);
+  }
+  return out.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Fetches a video's own captions (manually uploaded, or auto-generated when
+ * that's all a site offers) as plain text, without downloading the video --
+ * for videoSummary.js. Tries `lang` first, then English, since most sites'
+ * auto-captions only exist in the source's spoken language or English.
+ * Returns null when the site has no captions at all, or the fetch failed --
+ * both treated the same way by the caller. Never throws.
+ */
+export async function fetchAutoCaptions(sourceUrl, lang) {
+  await fs.mkdir(config.downloadDir, { recursive: true });
+  const outputBase = path.join(config.downloadDir, `subs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const langPref = lang && lang !== "en" ? `${lang},en` : "en";
+
+  const args = [
+    "--no-check-certificate",
+    "--skip-download",
+    "--write-subs",
+    "--write-auto-subs",
+    "--sub-langs", langPref,
+    "--sub-format", "vtt",
+    "--convert-subs", "vtt",
+    "-o", outputBase,
+    sourceUrl,
+  ];
+  if (config.ytdlpCookiesFile) args.unshift("--cookies", config.ytdlpCookiesFile);
+
+  const exitCode = await new Promise((resolve) => {
+    const child = spawn("yt-dlp", args, { env: { ...process.env, PYTHONUNBUFFERED: "1" } });
+    const timer = setTimeout(() => child.kill("SIGKILL"), CAPTIONS_TIMEOUT_MS);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+
+  let text = null;
+  try {
+    const dir = path.dirname(outputBase);
+    const prefix = path.basename(outputBase);
+    const matches = (await fs.readdir(dir)).filter((f) => f.startsWith(prefix) && f.endsWith(".vtt"));
+    if (matches.length) {
+      const vtt = await fs.readFile(path.join(dir, matches[0]), "utf8");
+      const plain = vttToText(vtt);
+      if (plain) text = plain;
+    }
+    await Promise.all(matches.map((f) => fs.rm(path.join(dir, f), { force: true }).catch(() => {})));
+  } catch (err) {
+    console.error("Reading fetched captions failed:", err?.message ?? err);
+  }
+
+  if (exitCode !== 0 && !text) return null;
+  return text;
+}

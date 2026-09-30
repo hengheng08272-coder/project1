@@ -77,6 +77,12 @@ const MENU = [
     en: "📷 Ask about a Photo",
   },
   {
+    action: "summarize",
+    emoji: "m_summary",
+    km: "📝 សង្ខេបវីដេអូ (AI)",
+    en: "📝 Summarize a Video (AI)",
+  },
+  {
     action: "buy",
     emoji: "credit",
     style: "success",
@@ -146,7 +152,7 @@ export function mainKeyboard(language) {
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("translate"), button("watch")],
-    ...(config.nvidiaApiKey ? [[button("image")]] : []),
+    ...(config.nvidiaApiKey ? [[button("image"), button("summarize")]] : []),
     [button("account")],
     [button("buy")],
     [button("referral")],

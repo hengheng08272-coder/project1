@@ -49,6 +49,7 @@ export const EMOJI = {
   m_help: ["m_help", "❓"],
   m_desktop: ["m_desktop", "🖥️"],
   m_camera: ["m_camera", "📷"],
+  m_summary: ["m_summary", "📝"],
   // KH Invoice section
   inv_app: ["inv_app", "📱"],
   inv_create: ["inv_create", "🧾"],
