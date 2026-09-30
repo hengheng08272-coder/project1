@@ -36,7 +36,7 @@ const TEXT = {
       "ផ្ញើមកខ្ញុំមួយក្នុងចំណោមទាំងនេះ៖\n" +
       "{:video:} វីដេអូ ឬ GIF (កាត់យក 3 វិនាទី)\n" +
       "{:tt:} {:fb:} {:yt:} {:ig:} តំណ TikTok / Facebook / YouTube / Instagram\n" +
-      "🖼 រូបភាព ឬ Sticker\n\n" +
+      "🖼 រូបភាព ឬ Sticker (ក្លាយជា Emoji កំពុងវិល និងទម្លើង)\n\n" +
       "⏱ ចង់ចាប់ផ្តើមពីវិនាទីណា? ដាក់លេខក្រោយតំណ ឧ. https://… 12\n" +
       "{:diamond:} Emoji ចូលក្នុងកញ្ចប់ផ្ទាល់ខ្លួនរបស់អ្នក",
     working: "{:wait:} កំពុងបង្កើត Emoji…",
@@ -55,7 +55,7 @@ const TEXT = {
       "Send me one of these:\n" +
       "{:video:} a video or GIF (3 seconds are used)\n" +
       "{:tt:} {:fb:} {:yt:} {:ig:} a TikTok / Facebook / YouTube / Instagram link\n" +
-      "🖼 a photo or a sticker\n\n" +
+      "🖼 a photo or a sticker (becomes a spinning, bobbing emoji)\n\n" +
       "⏱ Start later in the clip? Put the second after the link, e.g. https://… 12\n" +
       "{:diamond:} The emoji goes into your own pack",
     working: "{:wait:} Making your emoji…",
@@ -154,8 +154,10 @@ export async function handleMessage(message, user) {
       downloaded = (await downloadWithYtdlp(url, null, "emoji.mp4", null, "small")).path;
       source = downloaded;
     }
-    const sticker = moving ? await toWebm(source, dir, startAt(caption || text)) : await toPng(source, dir);
-    const result = await addToPack(user, sticker, moving);
+    // A still photo becomes a small spinning/bobbing clip instead of a flat
+    // PNG now (see toSpinningWebm) -- it's genuinely a video emoji either way.
+    const sticker = moving ? await toWebm(source, dir, startAt(caption || text)) : await toSpinningWebm(source, dir);
+    const result = await addToPack(user, sticker, true);
     // {:<id>:} is the new emoji itself (see customEmoji.js).
     await call("sendMessage", {
       chat_id: chatId,
@@ -216,14 +218,51 @@ async function toWebm(source, dir, start) {
   throw new Error("the clip stays over 256 KB -- try a calmer part of it");
 }
 
-async function toPng(source, dir) {
-  const out = path.join(dir, "emoji.png");
-  try {
-    await run(FFMPEG, ["-y", "-loglevel", "error", "-i", source, "-vf", SQUARE, "-frames:v", "1", out], { timeout: 60_000 });
-  } catch {
-    throw new Error("could not read that picture");
+// Oversized on purpose: a square's inscribed circle (radius = half its own
+// side) doesn't shrink as it rotates, so scaling the source up to 160 means
+// an 80px radius around the center is covered at ANY rotation angle -- comfortably
+// past the 100x100 crop's own farthest corner (a 70.7px radius) even with the
+// vertical bob's few extra pixels of reach. That keeps every frame full of
+// real photo content, with no background corner ever exposed to fill in.
+//
+// The fill-color route (rotate a plain crop with a transparent corner) was
+// tried first and confirmed NOT to work on this box: a half-transparent test
+// clip round-tripped through libvpx-vp9 came back fully opaque, despite the
+// WebM being tagged alpha_mode=1 -- so this sidesteps needing VP9 alpha at
+// all, rather than depending on a codec feature that didn't hold up here.
+const SPIN_CANVAS = 160;
+const SPIN_CROP_OFFSET = (SPIN_CANVAS - 100) / 2;
+// One shared period for the spin and the bob (90 degrees out of phase, for a
+// wobble rather than a plain back-and-forth), over exactly two full periods
+// of the clip's 2.9s runtime -- so the loop's end matches its own start with
+// no visible jump when Telegram repeats it.
+const SPIN_FILTER =
+  `scale=${SPIN_CANVAS}:${SPIN_CANVAS}:force_original_aspect_ratio=increase:flags=lanczos,` +
+  `crop=${SPIN_CANVAS}:${SPIN_CANVAS},` +
+  `rotate=a='0.22*sin(2*PI*t/1.45)':ow=${SPIN_CANVAS}:oh=${SPIN_CANVAS},` +
+  `crop=100:100:${SPIN_CROP_OFFSET}:'${SPIN_CROP_OFFSET}+6*cos(2*PI*t/1.45)'`;
+
+/** A looping 2.9s clip of a still photo spinning and bobbing gently in place, shrunk until it is under Telegram's 256 KB video-emoji cap. */
+async function toSpinningWebm(source, dir) {
+  const out = path.join(dir, "emoji.webm");
+  for (const [crf, fps] of [[32, 24], [40, 24], [48, 20], [56, 15]]) {
+    try {
+      await run(
+        FFMPEG,
+        ["-y", "-loglevel", "error", "-loop", "1", "-t", "2.9", "-i", source, "-t", "2.9",
+          "-vf", SPIN_FILTER, "-r", String(fps),
+          "-c:v", "libvpx-vp9", "-pix_fmt", "yuv420p", "-b:v", "0", "-crf", String(crf),
+          "-an", "-map_metadata", "-1", out],
+        { timeout: 60_000 }
+      );
+    } catch (err) {
+      throw new Error(`could not animate that picture (${String(err?.stderr ?? err?.message ?? "").trim().split("\n").pop()?.slice(0, 120) || "ffmpeg failed"})`);
+    }
+    const size = (await fs.stat(out).catch(() => ({ size: 0 }))).size;
+    if (!size) throw new Error("could not read that picture");
+    if (size <= MAX_WEBM) return out;
   }
-  return out;
+  throw new Error("the animated version stays over 256 KB -- try a simpler picture");
 }
 
 /** Adds the sticker to the user's pack, making the pack on the first one. */
