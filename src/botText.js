@@ -83,6 +83,12 @@ const MENU = [
     en: "📝 Summarize a Video (AI)",
   },
   {
+    action: "adimage",
+    emoji: "m_ad",
+    km: "🎨 បង្កើតរូបភាព Ads (AI)",
+    en: "🎨 Generate an Ad Image (AI)",
+  },
+  {
     action: "buy",
     emoji: "credit",
     style: "success",
@@ -152,7 +158,7 @@ export function mainKeyboard(language) {
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("translate"), button("watch")],
-    ...(config.nvidiaApiKey ? [[button("image"), button("summarize")]] : []),
+    ...(config.nvidiaApiKey ? [[button("image"), button("summarize")], [button("adimage")]] : []),
     [button("account")],
     [button("buy")],
     [button("referral")],

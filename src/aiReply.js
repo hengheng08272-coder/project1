@@ -36,34 +36,49 @@ const MAX_TRANSCRIPT_CHARS = 6_000;
 const PER_USER_DAILY_LIMIT = 8;
 const GLOBAL_DAILY_LIMIT = 300;
 
-// In-memory on purpose, like notifyBot.js's screen cache: resets on a
-// restart, which only means the caps loosen for a moment, never that they
-// jam shut. Nothing here needs to survive a deploy.
-const usage = new Map(); // telegram_user_id -> { day, count }
-let globalDay = "";
-let globalCount = 0;
+// Image generation costs far more compute per call than a chat or vision
+// reply, and a free/shared key's image-model credits run out much faster
+// than its chat ones -- so this gets its own, much smaller budget rather
+// than sharing the text caps above.
+const IMAGE_GEN_PER_USER_DAILY_LIMIT = 3;
+const IMAGE_GEN_GLOBAL_DAILY_LIMIT = 30;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** True if this call is still within both the per-user and global daily caps -- and counts it if so. */
-function withinDailyCap(userId) {
-  const day = today();
-  if (globalDay !== day) {
-    globalDay = day;
-    globalCount = 0;
-  }
-  if (globalCount >= GLOBAL_DAILY_LIMIT) return false;
+/**
+ * Builds an independent per-user + global daily cap, each with its own
+ * counters -- in memory on purpose, like notifyBot.js's screen cache: a
+ * restart only loosens the caps for a moment, never jams them shut, and
+ * nothing here needs to survive a deploy.
+ */
+function makeDailyCap(perUserLimit, globalLimit) {
+  const usage = new Map(); // telegram_user_id -> { day, count }
+  let globalDay = "";
+  let globalCount = 0;
 
-  const entry = usage.get(userId);
-  const count = entry?.day === day ? entry.count : 0;
-  if (count >= PER_USER_DAILY_LIMIT) return false;
+  /** True if this call is still within both the per-user and global daily caps -- and counts it if so. */
+  return function withinCap(userId) {
+    const day = today();
+    if (globalDay !== day) {
+      globalDay = day;
+      globalCount = 0;
+    }
+    if (globalCount >= globalLimit) return false;
 
-  usage.set(userId, { day, count: count + 1 });
-  globalCount += 1;
-  return true;
+    const entry = usage.get(userId);
+    const count = entry?.day === day ? entry.count : 0;
+    if (count >= perUserLimit) return false;
+
+    usage.set(userId, { day, count: count + 1 });
+    globalCount += 1;
+    return true;
+  };
 }
+
+const withinDailyCap = makeDailyCap(PER_USER_DAILY_LIMIT, GLOBAL_DAILY_LIMIT);
+const withinImageGenDailyCap = makeDailyCap(IMAGE_GEN_PER_USER_DAILY_LIMIT, IMAGE_GEN_GLOBAL_DAILY_LIMIT);
 
 const SYSTEM_PROMPT = {
   km:
@@ -207,4 +222,87 @@ export async function summarizeTranscript(userId, transcript, language) {
     { role: "system", content: SUMMARY_SYSTEM_PROMPT[language] ?? SUMMARY_SYSTEM_PROMPT.en },
     { role: "user", content: trimmed.slice(0, MAX_TRANSCRIPT_CHARS) },
   ]);
+}
+
+// A separate NVIDIA "Visual GenAI" endpoint and calling convention from the
+// OpenAI-style chat/completions one ENDPOINT above -- images generation
+// NIMs (FLUX, Stable Diffusion, ...) are invoked per-model at their own
+// path, and don't take a `messages` array.
+const IMAGE_GEN_ENDPOINT_BASE = "https://ai.api.nvidia.com/v1/genai";
+// Image generation is much slower than a chat or vision reply.
+const IMAGE_GEN_TIMEOUT_MS = 60_000;
+
+const AD_PROMPT_SYSTEM = {
+  km:
+    "អ្នកជា prompt engineer ជំនួយសម្រាប់ AI បង្កើតរូបភាព។ អ្នកប្រើប្រាស់សរសេរអធិប្បាយ (ជាភាសាខ្មែរ ឬអង់គ្លេស) នៃរូបភាពផ្សាយពាណិជ្ជកម្មដែលគេចង់បាន។ " +
+    "សរសេរ prompt ជាភាសាអង់គ្លេសមួយ លម្អិត (subject, style, colors, lighting, composition) សម្រាប់ AI បង្កើតរូបភាព។ ចេញតែ prompt ភាសាអង់គ្លេសប៉ុណ្ណោះ កុំពន្យល់អ្វីបន្ថែម។",
+  en:
+    "You are a prompt-engineering assistant for an AI image generator. The user describes an ad image they want, in Khmer or English. " +
+    "Write ONE detailed English text-to-image prompt (subject, style, colors, lighting, composition). Output ONLY that English prompt, nothing else.",
+};
+
+/** Turns a short, possibly-Khmer description into one detailed English image prompt -- the step that lets imageGen.js take a request in the user's own language. Returns null on any failure. */
+async function expandAdPrompt(description, language) {
+  return callChat([
+    { role: "system", content: AD_PROMPT_SYSTEM[language] ?? AD_PROMPT_SYSTEM.en },
+    { role: "user", content: description.slice(0, MAX_QUESTION_CHARS) },
+  ]);
+}
+
+/** POSTs one image-generation call and returns the raw base64 image, or null on any failure. Never throws. */
+async function requestGeneratedImage(prompt) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_GEN_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${IMAGE_GEN_ENDPOINT_BASE}/${config.nvidiaImageModel}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${config.nvidiaApiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      // flux.1-schnell is the fast, distilled FLUX variant -- a handful of
+      // steps is its own intended range, not a shortcut taken here; the
+      // higher-quality flux.1-dev instead wants ~50 and would need a
+      // different NVIDIA_IMAGE_MODEL, not just a bigger `steps`.
+      body: JSON.stringify({ prompt, mode: "base", seed: 0, steps: 4 }),
+    });
+    if (!res.ok) {
+      console.error(`AI image generation failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+      return null;
+    }
+    const data = await res.json();
+    // Exact response shape isn't the same across every NVIDIA Visual GenAI
+    // model -- these are the shapes seen across FLUX/Stable-Diffusion NIMs.
+    const base64 = data?.artifacts?.[0]?.base64 ?? data?.image ?? data?.data?.[0]?.b64_json ?? null;
+    return base64 || null;
+  } catch (err) {
+    console.error("AI image generation failed:", err?.message ?? err);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Generates an ad image from a short description (Khmer or English) -- see
+ * imageGen.js. Two calls happen here: the text model turns the description
+ * into a detailed English prompt, then the image model renders it. Returns
+ * `{ imageBase64, prompt }`, or null when the feature is off, the
+ * description was skipped, either call failed, or the (much stricter, see
+ * IMAGE_GEN_PER_USER_DAILY_LIMIT) daily cap was reached. Never throws.
+ */
+export async function generateAdImage(userId, description, language) {
+  if (!config.nvidiaApiKey) return null;
+
+  const trimmed = String(description ?? "").trim();
+  if (trimmed.length < 4) return null;
+  if (!withinImageGenDailyCap(userId)) return null;
+
+  const prompt = await expandAdPrompt(trimmed, language);
+  if (!prompt) return null;
+  const imageBase64 = await requestGeneratedImage(prompt);
+  if (!imageBase64) return null;
+  return { imageBase64, prompt };
 }

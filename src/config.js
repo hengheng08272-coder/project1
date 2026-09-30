@@ -80,6 +80,10 @@ export const config = {
   // shared trial, say) can be revoked or run dry with no notice.
   nvidiaApiKey: str("NVIDIA_API_KEY"),
   nvidiaApiModel: str("NVIDIA_API_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+  // Ad image generation (see imageGen.js) -- a separate NVIDIA "Visual GenAI"
+  // model and endpoint from the chat/vision one above. Configurable because
+  // not every NVIDIA account's key has the same image models enabled.
+  nvidiaImageModel: str("NVIDIA_IMAGE_MODEL", "black-forest-labs/flux.1-schnell"),
   // This service's own public origin, used to register the bot's webhook on
   // startup. Railway sets RAILWAY_PUBLIC_DOMAIN for us; PUBLIC_URL overrides
   // it anywhere else.

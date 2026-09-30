@@ -23,6 +23,7 @@ import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
 import * as emojiMaker from "./emojiMaker.js";
+import * as imageGen from "./imageGen.js";
 import * as imageQa from "./imageQa.js";
 import * as khInvoice from "./khInvoice.js";
 import * as translate from "./translate.js";
@@ -340,6 +341,7 @@ export async function handleMessage(message) {
     if (action !== "translate") translate.cancel(chatId);
     if (action !== "image") imageQa.cancel(chatId);
     if (action !== "summarize") videoSummary.cancel(chatId);
+    if (action !== "adimage") imageGen.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -353,6 +355,8 @@ export async function handleMessage(message) {
       return imageQa.ask(chatId, user);
     case "summarize":
       return videoSummary.ask(chatId, user);
+    case "adimage":
+      return imageGen.ask(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -391,9 +395,11 @@ export async function handleMessage(message) {
     khInvoice.cancelPending(chatId);
     translate.cancel(chatId);
     imageQa.cancel(chatId);
+    imageGen.cancel(chatId);
   } else if (await translate.handleText(chatId, user, text)) return;
   else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;
+  else if (await imageGen.handleText(chatId, user, text)) return;
   if (!url) {
     // Optional AI FAQ (aiReply.js) -- null the instant it's off, exhausted,
     // or the call failed, so this is exactly t.notALink whenever the feature
