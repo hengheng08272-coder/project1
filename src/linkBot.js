@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import { config } from "./config.js";
 import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } from "./botText.js";
+import * as aiReply from "./aiReply.js";
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
@@ -375,7 +376,11 @@ export async function handleMessage(message) {
   else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;
   if (!url) {
-    await send(chatId, t.notALink, { reply_markup: mainKeyboard(user.language) });
+    // Optional AI FAQ (aiReply.js) -- null the instant it's off, exhausted,
+    // or the call failed, so this is exactly t.notALink whenever the feature
+    // isn't configured or doesn't have an answer.
+    const aiAnswer = await aiReply.answerFaq(user.telegram_user_id, text, user.language).catch(() => null);
+    await send(chatId, aiAnswer ?? t.notALink, { reply_markup: mainKeyboard(user.language) });
     return;
   }
 
