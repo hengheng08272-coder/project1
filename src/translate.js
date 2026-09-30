@@ -224,10 +224,15 @@ export async function handleCallback(cq, user) {
  * language. Returns the translated text and the language Google detected.
  */
 export async function translateText(text, targetLang) {
-  const url =
-    "https://translate.googleapis.com/translate_a/single" +
-    `?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
-  const res = await fetch(url);
+  const query = `?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+  let res = await fetch(`https://translate.googleapis.com/translate_a/single${query}`);
+  // A 429 here is Google throttling Railway's shared outbound IP for a
+  // moment, not anything about this request -- one short wait and a go at
+  // the same service's other hostname usually gets through.
+  if (res.status === 429) {
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    res = await fetch(`https://translate.google.com/translate_a/single${query}`);
+  }
   if (!res.ok) throw new Error(`Google Translate returned ${res.status}`);
   const data = await res.json();
   const translated = (data?.[0] ?? []).map((chunk) => chunk[0]).join("");
