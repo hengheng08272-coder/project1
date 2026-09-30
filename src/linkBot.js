@@ -18,12 +18,17 @@ import { fileURLToPath } from "node:url";
 
 import { config } from "./config.js";
 import { actionForLabel, languageKeyboard, mainKeyboard, progressBar, texts } from "./botText.js";
+import * as aiReply from "./aiReply.js";
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
+import * as adminPanel from "./adminPanel.js";
 import * as emojiMaker from "./emojiMaker.js";
+import * as imageGen from "./imageGen.js";
+import * as imageQa from "./imageQa.js";
 import * as khInvoice from "./khInvoice.js";
 import * as translate from "./translate.js";
+import * as videoSummary from "./videoSummary.js";
 import * as watch from "./watch.js";
 import { db, nowIso, rows } from "./db.js";
 import { withFloodRetry } from "./floodRetry.js";
@@ -185,6 +190,20 @@ async function quotaFor(user) {
 
 // ------------------------------------------------------------ menu screens
 
+/** The "🤖 SaveIt AI" door: one screen listing Image Q&A / Video Summary / Ad Image, each an inline button routed through handleCallback's "ai:" prefix. */
+async function showAiMenu(chatId, user) {
+  const t = texts(user.language);
+  return send(chatId, t.aiMenuTitle, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t.aiImageBtn, emoji: "m_camera", callback_data: "ai:image" }],
+        [{ text: t.aiSummarizeBtn, emoji: "m_summary", callback_data: "ai:summarize" }],
+        [{ text: t.aiAdImageBtn, emoji: "m_ad", callback_data: "ai:adimage" }],
+      ],
+    },
+  });
+}
+
 async function showAccount(chatId, user) {
   const t = texts(user.language);
   const quota = await quotaFor(user);
@@ -260,6 +279,11 @@ export async function handleMessage(message) {
   const user = await ensureUser(from, startPayload);
   const t = texts(user.language);
 
+  // The picture the 🛡️ Admin section asked for (an icon or a bank QR), or
+  // one captioned /setemoji <name>. First, so a waiting Emoji Maker can't
+  // turn the operator's icon into a sticker instead.
+  if ((message.photo || message.document) && (await adminPanel.handleMedia(message, user))) return;
+
   // A GIF / video / photo / link for the Emoji Maker (while it waits for
   // one, or captioned /emoji). Before the photo handling: a photo it waits
   // for is an emoji, not a payment screenshot.
@@ -294,10 +318,20 @@ export async function handleMessage(message) {
     }
   }
 
+  // A photo the 📷 "Ask about a photo" button just asked for. Ahead of the
+  // payment handler below, which answers every other photo ("no pending
+  // order") and so would otherwise swallow it.
+  if (message.photo && imageQa.isWaiting(chatId) && (await imageQa.handleMessage(message, user))) return;
+
   // A photo is a payment screenshot, or -- from the operator, captioned
   // /setqr -- the bank QR orders are built from. Checked before the text
   // handling below, since a photo usually has no text at all.
   if (message.photo && (await botPay.handlePhoto(message, user))) return;
+
+  // Image Q&A (optional, see imageQa.js): a photo the 📷 button is waiting
+  // for, or any photo with a caption asking about it. A bare photo that
+  // matches none of the above falls through unchanged (the welcome screen).
+  if (message.photo && (await imageQa.handleMessage(message, user))) return;
 
   // A message forwarded out of the storage channel names it, so the operator
   // never has to dig a raw -100... id out of Telegram.
@@ -310,26 +344,36 @@ export async function handleMessage(message) {
 
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
-    await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language) });
+    await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language, chatId) });
     return;
   }
 
+  if (await adminPanel.handleText(chatId, user, text)) return;
   if (await handleAdminCommand(chatId, text)) return;
   if (await botPay.handleAdminPayCommand(chatId, text)) return;
 
-  if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language))) return;
+  if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language, chatId))) return;
 
   const watchButton = await watch.handleSectionButton(chatId, user, text);
   if (watchButton === "dlcredit") return botPay.showPackages(chatId, user, await quotaFor(user));
   if (watchButton) return;
   if (await watch.handleListButton(chatId, user, text)) return;
 
-  const action = actionForLabel(text) ?? commandAction(text);
+  let action = actionForLabel(text) ?? commandAction(text);
+  // Anyone else typing the Admin label is just sending text.
+  if (action === "admin" && !botPay.isAdminChat(chatId)) action = null;
   if (action) {
+    adminPanel.cancel(chatId);
     khInvoice.cancelPending(chatId);
     watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
     if (action !== "translate") translate.cancel(chatId);
+    // None of these three are label actions themselves anymore -- they only
+    // start from the "ai" sub-menu's inline buttons (see handleCallback) --
+    // so any label tap here always means leaving them behind.
+    imageQa.cancel(chatId);
+    videoSummary.cancel(chatId);
+    imageGen.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -339,6 +383,8 @@ export async function handleMessage(message) {
       return emojiMaker.ask(chatId, user);
     case "translate":
       return translate.ask(chatId, user);
+    case "ai":
+      return showAiMenu(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -363,19 +409,33 @@ export async function handleMessage(message) {
     }
     case "app":
       return send(chatId, config.webAppUrl ? t.openApp(config.webAppUrl) : t.openAppMissing);
+    case "admin":
+      return adminPanel.show(chatId, user);
     default:
       break;
   }
+
+  // Checked before the URL branch below (unlike translate/watch/khInvoice's
+  // text handlers), since this one's whole job is reading a video *link* --
+  // otherwise it would never see one, only ever the default download flow.
+  if (await videoSummary.handleText(chatId, user, text)) return;
 
   const url = URL_PATTERN.exec(text)?.[0];
   if (url) {
     khInvoice.cancelPending(chatId);
     translate.cancel(chatId);
+    imageQa.cancel(chatId);
+    imageGen.cancel(chatId);
   } else if (await translate.handleText(chatId, user, text)) return;
   else if (await watch.handleText(chatId, user, text)) return; // an EP number, a show being open
   else if (await khInvoice.handleText(chatId, user, text)) return;
+  else if (await imageGen.handleText(chatId, user, text)) return;
   if (!url) {
-    await send(chatId, t.notALink, { reply_markup: mainKeyboard(user.language) });
+    // Optional AI FAQ (aiReply.js) -- null the instant it's off, exhausted,
+    // or the call failed, so this is exactly t.notALink whenever the feature
+    // isn't configured or doesn't have an answer.
+    const aiAnswer = await aiReply.answerFaq(user.telegram_user_id, text, user.language).catch(() => null);
+    await send(chatId, aiAnswer ?? t.notALink, { reply_markup: mainKeyboard(user.language, chatId) });
     return;
   }
 
@@ -655,6 +715,7 @@ function commandAction(text) {
     case "/invoice": return "invoice";
     case "/emoji": return "emoji";
     case "/translate": return "translate";
+    case "/admin": return "admin";
     default: return null;
   }
 }
@@ -662,6 +723,10 @@ function commandAction(text) {
 /** The language buttons under "🌐 ភាសា". Returns true when it handled the tap. */
 export async function handleCallback(cq) {
   const data = String(cq?.data ?? "");
+  // Any other button (🖼 Set poster, the AI photo question, ...) means the
+  // operator moved on, so the next photo is no longer the icon or QR the
+  // Admin section was waiting for.
+  if (!data.startsWith("adm:") && cq?.message?.chat?.id) adminPanel.cancel(cq.message.chat.id);
   if (data.startsWith("inv:") && cq.from?.id) {
     return khInvoice.handleCallback(cq, await ensureUser(cq.from, null));
   }
@@ -674,6 +739,28 @@ export async function handleCallback(cq) {
   }
   if (data.startsWith("watch:") && cq.from?.id) {
     return watch.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data.startsWith("adm:") && cq.from?.id) {
+    const chatId = cq.message?.chat?.id;
+    const runAdminCommand = async (command) =>
+      (await handleAdminCommand(chatId, command)) || botPay.handleAdminPayCommand(chatId, command);
+    return adminPanel.handleCallback(cq, await ensureUser(cq.from, null), runAdminCommand);
+  }
+  if (data.startsWith("tr:") && cq.from?.id) {
+    return translate.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data.startsWith("ai:") && cq.from?.id) {
+    // The "🤖 SaveIt AI" sub-menu's buttons (see showAiMenu): each just
+    // starts the same ask() the removed standalone menu buttons used to.
+    const chatId = cq.message?.chat?.id;
+    if (!chatId) return false;
+    const user = await ensureUser(cq.from, null);
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    const which = data.split(":")[1];
+    if (which === "image") return imageQa.ask(chatId, user);
+    if (which === "summarize") return videoSummary.ask(chatId, user);
+    if (which === "adimage") return imageGen.ask(chatId, user);
+    return true;
   }
   if (!data.startsWith("bot:")) return false;
 
@@ -704,7 +791,7 @@ export async function handleCallback(cq) {
     .eq("telegram_user_id", userId);
 
   await call("answerCallbackQuery", { callback_query_id: cq.id });
-  await send(chatId, texts(language).languageSet, { reply_markup: mainKeyboard(language) });
+  await send(chatId, texts(language).languageSet, { reply_markup: mainKeyboard(language, chatId) });
   return true;
 }
 

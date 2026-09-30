@@ -34,7 +34,6 @@ const MENU = [
   {
     action: "premium",
     emoji: "dl",
-    style: "primary",
     km: "📥 Telegram Private Link",
     en: "📥 Telegram Private Link",
     aliases: [
@@ -60,7 +59,9 @@ const MENU = [
     // it made the main-menu button wrap to two lines on a phone.
     aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)", "🎬 Khmer-dubbed Shows (for sale)", "🎬 Watch"],
   },
-  { action: "emoji", emoji: "sparkle", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
+  // Its own icon rather than the shared "sparkle", which SaveIt AI below and
+  // plenty of reply text use too.
+  { action: "emoji", emoji: "m_emoji", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
     action: "translate",
     emoji: "m_language",
@@ -69,6 +70,12 @@ const MENU = [
     en: "🌐 Translate",
     aliases: ["🌐 Translate · ខ្មែរ ⇄ English"],
   },
+  // Only shown (see mainKeyboard) when NVIDIA_API_KEY is set -- opens the
+  // AI sub-menu (see showAiMenu in linkBot.js) instead of being its own
+  // action, so Image Q&A / Video Summary / Ad Image live under one door
+  // the same way KH Invoice and Emoji Maker do, instead of three separate
+  // buttons crowding the main keyboard.
+  { action: "ai", emoji: "sparkle", km: "🤖 SaveIt AI", en: "🤖 SaveIt AI" },
   {
     action: "buy",
     emoji: "credit",
@@ -95,6 +102,9 @@ const MENU = [
     en: "📲 Open App",
     aliases: ["🚀 Open App", "🚀 Open App · បើកកម្មវិធី", "🖥 បើកកម្មវិធី", "🖥 Open app"],
   },
+  // Only on the operator's own keyboard (see mainKeyboard); linkBot ignores
+  // the label from anyone else.
+  { action: "admin", emoji: "admin", km: "🛡️ Admin", en: "🛡️ Admin" },
 ];
 
 const LABEL_TO_ACTION = new Map();
@@ -126,10 +136,12 @@ export function actionForLabel(text) {
  * web UI inside the chat instead of a browser -- and is left out entirely
  * when it isn't, rather than showing a button that does nothing.
  */
-export function mainKeyboard(language) {
+export function mainKeyboard(language, chatId = null) {
   const button = (action) => {
     const item = MENU.find((m) => m.action === action);
-    // `style` tints a few key buttons (Telegram's primary / success colours).
+    // `style` tints a few key buttons. Not "primary": Telegram draws the
+    // label in its accent blue, which on that style's own blue background is
+    // invisible -- those buttons came out looking like a bare icon.
     return { text: item[language] ?? item.en, emoji: item.emoji, ...(item.style ? { style: item.style } : {}) };
   };
   const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");
@@ -139,11 +151,13 @@ export function mainKeyboard(language) {
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("translate"), button("watch")],
+    ...(config.nvidiaApiKey ? [[button("ai")]] : []),
     [button("account")],
     [button("buy")],
     [button("referral")],
   ];
   if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
+  if (config.telegramAdminChatId && String(chatId) === String(config.telegramAdminChatId)) rows.push([button("admin")]);
   return { keyboard: rows, resize_keyboard: true, is_persistent: true };
 }
 
@@ -159,16 +173,16 @@ export function languageKeyboard() {
 const TEXT = {
   km: {
     welcome: (name) =>
-      `{:logo:} សួស្តី ${name}! នេះជា {:brand:} SaveIt KH\n\n` +
+      `{:logo:} សួស្តី ${name}! នេះជា {:brand:} {b}SaveIt KH{/b}\n\n` +
       `ខ្ញុំជួយទាញយកវីដេអូ និងបទចម្រៀង៖\n\n` +
-      `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់ {:m_free:}\n` +
+      `{:m_free:} {b}SaveIt Free{/b} — ឥតគិតថ្លៃ មិនកំណត់ {:m_free:}\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
-      `{:m_pro:} SaveIt Pro — Telegram (ក្រុម/channel ឯកជន)\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram (ក្រុម/channel ឯកជន)\n` +
       `      {:gift:} សាកល្បងឥតគិតថ្លៃ 10 វីដេអូ\n` +
       `      {:video:} វីដេអូពេញទំហំ គ្មានកម្រិត 50MB\n\n` +
       `គ្រាន់តែ ផ្ញើតំណមក ខ្ញុំធ្វើនៅសល់។`,
     help:
-      `{:m_help:} របៀបប្រើ\n\n` +
+      `{:m_help:} {b}របៀបប្រើ{/b}\n\n` +
       `1️⃣ ចម្លងតំណវីដេអូ (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ ផ្ញើវាមកក្នុងការសន្ទនានេះ\n` +
       `3️⃣ រង់ចាំបន្តិច — ខ្ញុំផ្ញើឯកសារ ឬ តំណទាញយកមកវិញ\n\n` +
@@ -200,37 +214,43 @@ const TEXT = {
     btnHelp: "❓ ជំនួយ",
     openApp: (url) => `{:m_desktop:} បើកកម្មវិធីពេញលេញ៖\n${url}`,
     openAppMissing: "{:m_desktop:} កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
+    aiMenuTitle:
+      "{:sparkle:} SaveIt AI\n\nជ្រើសរើសមុខងារ AI ដែលចង់ប្រើ៖\n\n" +
+      "{:bulb:} ក៏អាចគ្រាន់តែសរសេរសំណួរធម្មតាមកខ្ញុំផ្ទាល់ផងដែរ (AI FAQ) — ចម្លើយអំពី bot នេះ។",
+    aiImageBtn: "📷 សួរអំពីរូបភាព",
+    aiSummarizeBtn: "📝 សង្ខេបវីដេអូ",
+    aiAdImageBtn: "🎨 បង្កើតរូបភាព Ads",
     sendLink: "{:dl:} ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
     freeScreen: () =>
-      `{:m_free:} SaveIt Free — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
-      `{:yt:} YouTube     {:fb:} Facebook\n` +
+      `{:m_free:} {b}SaveIt Free{/b} — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
+      `{quote}{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
       `{:link:} .mp4 · .m3u8 · .mp3\n` +
-      `{:inv_in:} គេហទំព័រជាង ១៨០០ ផ្សេងទៀត\n\n` +
+      `{:inv_in:} គេហទំព័រជាង ១៨០០ ផ្សេងទៀត{/quote}\n\n` +
       `{:m_free:} ទាញយកប៉ុន្មានក៏បាន — មិនគិតលុយ មិនកំណត់ចំនួន\n\n` +
       `👉 ផ្ញើតំណមកបានឥឡូវនេះ\n` +
       `{:bulb:} ចង់យកតែសំឡេង? សរសេរ audio បន្ទាប់ពីតំណ`,
     proScreenTrial: (bar, used, total, left) =>
-      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram\n\n` +
       `{:gift:} សាកល្បងឥតគិតថ្លៃ ${total} វីដេអូ\n` +
       `${bar}  ${used}/${total}\n` +
       `{:ok:} នៅសល់ ${left} វីដេអូ\n\n` +
       `ទាញយកបានពី៖\n` +
-      `{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
+      `{quote}{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
       `📢 channel សាធារណៈ (t.me/...)\n` +
       `{:video:} វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
-      `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
+      `⚡ ផ្ញើមកវិញភ្លាម{/quote}\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenVip: (until) =>
-      `{:m_pro:} SaveIt Pro — VIP\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — VIP\n\n` +
       `{:m_free:} មិនកំណត់ រហូតដល់ ${until}\n\n` +
-      `{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
+      `{quote}{:lock:} ក្រុម / channel ឯកជន (t.me/c/...)\n` +
       `{:video:} វីដេអូពេញទំហំ — គ្មានកម្រិត 50MB\n` +
-      `⚡ ផ្ញើមកវិញភ្លាម\n\n` +
+      `⚡ ផ្ញើមកវិញភ្លាម{/quote}\n\n` +
       `👉 បើក post វីដេអូ → ចុចលើវា → Copy Link → ផ្ញើមកទីនេះ`,
     proScreenEmpty: (bar, total) =>
-      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram\n\n` +
       `${bar}  ${total}/${total}\n` +
       `{:fail:} អ្នកប្រើអស់វីដេអូឥតគិតថ្លៃហើយ\n\n` +
       `ដើម្បីបន្ត៖\n` +
@@ -264,16 +284,16 @@ const TEXT = {
   },
   en: {
     welcome: (name) =>
-      `{:logo:} Hi ${name}! This is {:brand:} SaveIt KH\n\n` +
+      `{:logo:} Hi ${name}! This is {:brand:} {b}SaveIt KH{/b}\n\n` +
       `I download videos and songs:\n\n` +
-      `{:m_free:} SaveIt Free — free & unlimited {:m_free:}\n` +
+      `{:m_free:} {b}SaveIt Free{/b} — free & unlimited {:m_free:}\n` +
       `      {:yt:} {:fb:} {:ig:} {:tt:} {:x:}\n\n` +
-      `{:m_pro:} SaveIt Pro — Telegram (private groups/channels)\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram (private groups/channels)\n` +
       `      {:gift:} 10 videos free to try\n` +
       `      {:video:} Full-size video, no 50MB limit\n\n` +
       `Just send me a link and I'll do the rest.`,
     help:
-      `{:m_help:} How to use\n\n` +
+      `{:m_help:} {b}How to use{/b}\n\n` +
       `1️⃣ Copy a video link (YouTube, Facebook, TikTok, Telegram…)\n` +
       `2️⃣ Send it to this chat\n` +
       `3️⃣ Wait a moment — I send back the file, or a download link\n\n` +
@@ -305,37 +325,43 @@ const TEXT = {
     btnHelp: "❓ Help",
     openApp: (url) => `{:m_desktop:} Open the full app:\n${url}`,
     openAppMissing: "{:m_desktop:} The web app URL isn't configured yet.",
+    aiMenuTitle:
+      "{:sparkle:} SaveIt AI\n\nPick the AI feature you want:\n\n" +
+      "{:bulb:} You can also just send me an ordinary question directly (AI FAQ) -- answers about this bot.",
+    aiImageBtn: "📷 Ask about a Photo",
+    aiSummarizeBtn: "📝 Summarize a Video",
+    aiAdImageBtn: "🎨 Generate an Ad Image",
     sendLink: "{:dl:} Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
     freeScreen: () =>
-      `{:m_free:} SaveIt Free — free & unlimited\n\n` +
-      `{:yt:} YouTube     {:fb:} Facebook\n` +
+      `{:m_free:} {b}SaveIt Free{/b} — free & unlimited\n\n` +
+      `{quote}{:yt:} YouTube     {:fb:} Facebook\n` +
       `{:ig:} Instagram   {:tt:} TikTok\n` +
       `{:x:} X (Twitter)  🎮 Twitch\n` +
       `{:link:} .mp4 · .m3u8 · .mp3\n` +
-      `{:inv_in:} ~1800 more sites\n\n` +
+      `{:inv_in:} ~1800 more sites{/quote}\n\n` +
       `{:m_free:} As many as you like — no charge, no limit\n\n` +
       `👉 Send a link now\n` +
       `{:bulb:} Want audio only? Write audio after the link`,
     proScreenTrial: (bar, used, total, left) =>
-      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram\n\n` +
       `{:gift:} Free trial: ${total} videos\n` +
       `${bar}  ${used}/${total}\n` +
       `{:ok:} ${left} left\n\n` +
       `Download from:\n` +
-      `{:lock:} Private groups / channels (t.me/c/...)\n` +
+      `{quote}{:lock:} Private groups / channels (t.me/c/...)\n` +
       `📢 Public channels (t.me/...)\n` +
       `{:video:} Full-size video — no 50MB limit\n` +
-      `⚡ Delivered instantly\n\n` +
+      `⚡ Delivered instantly{/quote}\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenVip: (until) =>
-      `{:m_pro:} SaveIt Pro — VIP\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — VIP\n\n` +
       `{:m_free:} Unlimited until ${until}\n\n` +
-      `{:lock:} Private groups / channels (t.me/c/...)\n` +
+      `{quote}{:lock:} Private groups / channels (t.me/c/...)\n` +
       `{:video:} Full-size video — no 50MB limit\n` +
-      `⚡ Delivered instantly\n\n` +
+      `⚡ Delivered instantly{/quote}\n\n` +
       `👉 Open the video post → tap it → Copy Link → send it here`,
     proScreenEmpty: (bar, total) =>
-      `{:m_pro:} SaveIt Pro — Telegram\n\n` +
+      `{:m_pro:} {b}SaveIt Pro{/b} — Telegram\n\n` +
       `${bar}  ${total}/${total}\n` +
       `{:fail:} Your free videos are used up\n\n` +
       `To keep going:\n` +

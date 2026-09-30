@@ -415,7 +415,7 @@ export async function handleSectionButton(chatId, user, text) {
     await call("sendMessage", {
       chat_id: chatId,
       text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
-      reply_markup: mainKeyboard(user.language),
+      reply_markup: mainKeyboard(user.language, chatId),
     });
     return true;
   }
@@ -437,7 +437,10 @@ async function showKindList(chatId, user, kind, page = 0, manage = false) {
   if (!KINDS.includes(kind)) return showGenres(chatId, user);
   const all = await showsInKind(kind);
   if (!all.length) {
-    listSessions.delete(String(chatId));
+    // Still a list session, empty: its Back button is matched in
+    // handleListButton, and without one the tap fell through to "that isn't
+    // a link".
+    listSessions.set(String(chatId), { kind, page: 0, manage: false });
     await call("sendMessage", {
       chat_id: chatId,
       text: t.noShows(kind),
@@ -844,7 +847,7 @@ export async function handleCallback(cq, user) {
     await call("sendMessage", {
       chat_id: chatId,
       text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
-      reply_markup: mainKeyboard(user.language),
+      reply_markup: mainKeyboard(user.language, chatId),
     });
   }
   return true;

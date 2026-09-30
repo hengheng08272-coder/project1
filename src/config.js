@@ -73,6 +73,17 @@ export const config = {
   ),
   khInvoiceBridgeSecret: str("KH_INVOICE_BRIDGE_SECRET"),
   khInvoiceWebUrl: str("KH_INVOICE_WEB_URL"),
+  // Optional AI FAQ reply (see aiReply.js): answers a message that wasn't a
+  // link, command, or known menu action, instead of just "that's not a
+  // link". Unset means the feature is entirely off -- nothing about the bot
+  // changes -- which matters because a key handed out for free (a school's
+  // shared trial, say) can be revoked or run dry with no notice.
+  nvidiaApiKey: str("NVIDIA_API_KEY"),
+  nvidiaApiModel: str("NVIDIA_API_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+  // Ad image generation (see imageGen.js) -- a separate NVIDIA "Visual GenAI"
+  // model and endpoint from the chat/vision one above. Configurable because
+  // not every NVIDIA account's key has the same image models enabled.
+  nvidiaImageModel: str("NVIDIA_IMAGE_MODEL", "black-forest-labs/flux.1-schnell"),
   // This service's own public origin, used to register the bot's webhook on
   // startup. Railway sets RAILWAY_PUBLIC_DOMAIN for us; PUBLIC_URL overrides
   // it anywhere else.

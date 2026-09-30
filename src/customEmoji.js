@@ -48,6 +48,10 @@ export const EMOJI = {
   m_language: ["m_language", "🌐"],
   m_help: ["m_help", "❓"],
   m_desktop: ["m_desktop", "🖥️"],
+  m_emoji: ["m_emoji", "✨"],
+  m_camera: ["m_camera", "📷"],
+  m_summary: ["m_summary", "📝"],
+  m_ad: ["m_ad", "🎨"],
   // KH Invoice section
   inv_app: ["inv_app", "📱"],
   inv_create: ["inv_create", "🧾"],
@@ -93,6 +97,22 @@ export const EMOJI = {
 // user just made, say), shown as ✨ where custom emoji can't be.
 const TOKEN = /\{:([a-z_]+|\d{5,}):\}/g;
 
+// Text styling, written as paired tags: {b}bold{/b}, {quote}...{/quote}. They
+// become message entities rather than a parse_mode, for the same reason the
+// bot never uses parse_mode: a stray "_" in a username must not be able to
+// make Telegram refuse the whole message. An unpaired tag is dropped, never
+// sent as literal text.
+const STYLES = {
+  b: "bold",
+  i: "italic",
+  u: "underline",
+  s: "strikethrough",
+  quote: "blockquote",
+  xquote: "expandable_blockquote", // long lists: collapsed, "show more" to open
+};
+const STYLE_TAG = new RegExp(`\\{(/?)(${Object.keys(STYLES).join("|")})\\}`, "g");
+const SCAN = new RegExp(`${TOKEN.source}|${STYLE_TAG.source}`, "g");
+
 // Once Telegram refuses them (owner without Premium, or ids of a pack that
 // was deleted), stop trying for a while instead of paying a failed request on
 // every message. A rebuilt pack clears it at once.
@@ -103,16 +123,40 @@ const NONE = Object.freeze({});
 
 async function emojiIds() {
   if (refusedAt && Date.now() - refusedAt < RETRY_MS) return NONE;
-  return (await paymentSettings()).emoji ?? {};
+  const settings = await paymentSettings();
+  // The admin's own pictures (setCustomEmoji) sit on top of the pack's.
+  return { ...(settings.emoji ?? {}), ...(settings.emoji_custom ?? {}) };
 }
 
-/** Replaces tokens in `text`; returns the text and the custom_emoji entities. */
-function resolve(text, ids, existing = []) {
-  if (typeof text !== "string" || !text.includes("{:")) return { text, entities: existing };
+/**
+ * Replaces tokens in `text`; returns the text and the entities (custom emoji
+ * and, when `styles` is on, the {b}/{quote} styling). With `styles` off the
+ * tags are still removed -- only the formatting is skipped -- which is what
+ * the "resend plain" retry uses, so a styling problem can't block a message.
+ */
+export function resolve(text, ids, existing = [], styles = true) {
+  const hasTokens = typeof text === "string" && (text.includes("{:") || /\{\/?(?:b|i|u|s|quote|xquote)\}/.test(text));
+  if (!hasTokens) return { text, entities: existing };
   const entities = [];
+  const open = []; // styles opened and not yet closed: { type, offset }
   let out = "";
   let last = 0;
-  for (const m of text.matchAll(TOKEN)) {
+  for (const m of text.matchAll(SCAN)) {
+    if (m[1] === undefined) {
+      // A style tag: m[2] is "/" for a closing one, m[3] the style.
+      out += text.slice(last, m.index);
+      last = m.index + m[0].length;
+      const style = STYLES[m[3]];
+      if (m[2] === "") {
+        open.push({ type: style, offset: out.length });
+      } else {
+        const at = open.findLastIndex((o) => o.type === style);
+        if (at === -1) continue;
+        const [{ offset }] = open.splice(at, 1);
+        if (styles && out.length > offset) entities.push({ type: style, offset, length: out.length - offset });
+      }
+      continue;
+    }
     const byId = /^\d+$/.test(m[1]);
     const entry = byId ? [null, "✨"] : EMOJI[m[1]];
     if (!entry) continue;
@@ -125,6 +169,8 @@ function resolve(text, ids, existing = []) {
     last = m.index + m[0].length;
   }
   out += text.slice(last);
+  // Telegram wants entities in text order, longer (outer) ones first.
+  entities.sort((a, b) => a.offset - b.offset || b.length - a.length);
   return { text: out, entities: [...existing, ...entities] };
 }
 
@@ -158,18 +204,18 @@ export async function decorate(body, { plain = false } = {}) {
   const ids = plain ? NONE : await emojiIds();
   const next = { ...body };
   if (typeof next.text === "string") {
-    const r = resolve(next.text, ids, next.entities ?? []);
+    const r = resolve(next.text, ids, next.entities ?? [], !plain);
     next.text = r.text;
     if (r.entities.length) next.entities = r.entities;
   }
   if (typeof next.caption === "string") {
-    const r = resolve(next.caption, ids, next.caption_entities ?? []);
+    const r = resolve(next.caption, ids, next.caption_entities ?? [], !plain);
     next.caption = r.text;
     if (r.entities.length) next.caption_entities = r.entities;
   }
   // editMessageMedia carries its caption inside `media`.
   if (next.media && typeof next.media === "object" && typeof next.media.caption === "string") {
-    const r = resolve(next.media.caption, ids, next.media.caption_entities ?? []);
+    const r = resolve(next.media.caption, ids, next.media.caption_entities ?? [], !plain);
     next.media = { ...next.media, caption: r.text, ...(r.entities.length ? { caption_entities: r.entities } : {}) };
   }
   if (next.reply_markup) next.reply_markup = decorateButtons(next.reply_markup, ids);
@@ -219,7 +265,15 @@ async function inputSticker(form, field, token, still) {
   return { sticker: `attach://${field}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] };
 }
 
-/** The request that creates `name` from the first icons. */
+/**
+ * The request that creates `name` from the first icons, and the tokens it
+ * actually carries. A token with no real asset file yet (added to EMOJI but
+ * never given a PNG/WEBM) is skipped rather than failing the whole pack -- it
+ * just keeps using its plain fallback emoji. `included` has to be reported
+ * back because the ids are matched to tokens by position later: assuming every
+ * token made it silently shifted every icon after a skipped one onto its
+ * neighbour's picture.
+ */
 async function packForm(ownerId, name, tokens, still) {
   const form = new FormData();
   form.set("user_id", String(ownerId));
@@ -227,23 +281,36 @@ async function packForm(ownerId, name, tokens, still) {
   form.set("title", "SaveIt KH Icons");
   form.set("sticker_type", "custom_emoji");
   const stickers = [];
-  for (const [i, token] of tokens.slice(0, FIRST_BATCH).entries()) stickers.push(await inputSticker(form, `s${i}`, token, still));
+  const included = [];
+  for (const token of tokens.slice(0, FIRST_BATCH)) {
+    try {
+      stickers.push(await inputSticker(form, `s${stickers.length}`, token, still));
+      included.push(token);
+    } catch (err) {
+      console.error(`buildPack: skipping "${token}" -- ${err?.message ?? err}`);
+    }
+  }
   form.set("stickers", JSON.stringify(stickers));
-  return form;
+  return { form, included };
 }
 
-/** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. */
+/** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. Same skip-don't-fail handling for a token with no asset file yet. */
 async function addRest(ownerId, name, tokens, still) {
   const added = [];
   for (const token of tokens.slice(FIRST_BATCH)) {
     for (const asStill of still ? [true] : [false, true]) {
-      const form = new FormData();
-      form.set("user_id", String(ownerId));
-      form.set("name", name);
-      form.set("sticker", JSON.stringify(await inputSticker(form, "s", token, asStill)));
-      if ((await botApiForm("addStickerToSet", form)).ok) {
-        added.push(token);
-        break;
+      try {
+        const form = new FormData();
+        form.set("user_id", String(ownerId));
+        form.set("name", name);
+        form.set("sticker", JSON.stringify(await inputSticker(form, "s", token, asStill)));
+        if ((await botApiForm("addStickerToSet", form)).ok) {
+          added.push(token);
+          break;
+        }
+      } catch (err) {
+        console.error(`buildPack: skipping "${token}" -- ${err?.message ?? err}`);
+        break; // no asset file at all -- retrying as still won't help
       }
     }
   }
@@ -265,17 +332,19 @@ export async function buildPack(ownerId) {
   const tokens = Object.keys(EMOJI);
   const name = `saveit_v${Date.now().toString(36)}_by_${username}`;
 
-  let created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, false));
+  let batch = await packForm(ownerId, name, tokens, false);
+  let created = await botApiForm("createNewStickerSet", batch.form);
   let note = "";
   if (!created.ok) {
     // The moving ones are the likelier to be refused; the stills always fit.
     const why = created.description ?? "unknown error";
-    created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, true));
+    batch = await packForm(ownerId, name, tokens, true);
+    created = await botApiForm("createNewStickerSet", batch.form);
     if (!created.ok) return `❌ Telegram refused the pack: ${created.description ?? why}`;
     note = `\n(Moving icons were refused -- "${why}" -- so this pack is still images.)`;
   }
 
-  const added = [...tokens.slice(0, FIRST_BATCH), ...(await addRest(ownerId, name, tokens, !!note))];
+  const added = [...batch.included, ...(await addRest(ownerId, name, tokens, !!note))];
 
   // The set lists its stickers in the order they went in.
   const set = await botApi("getStickerSet", { name });
@@ -295,8 +364,10 @@ export async function buildPack(ownerId) {
   // poster-less pack name is cleaned up.
   const legacy = `saveit_icons_by_${username}`;
   if (legacy !== name) await botApi("deleteStickerSet", { name: legacy }).catch(() => null);
+  const custom = (await customEmojiTokens()).length;
   return (
     `{:ok:} Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
+    (custom ? `(${custom} icon(s) set from 🛡️ Admin keep their own picture.)\n` : "") +
     `https://t.me/addemoji/${name}\n\n` +
     `Test: {:logo:} {:brand:} {:admin:} · {:m_free:} {:m_pro:} {:m_buy:} {:m_account:} {:m_help:} · {:inv_in:} {:inv_out:} {:inv_create:}\n` +
     `{:diamond:} {:sparkle:} {:video:} {:ok:} {:fail:} {:wait:} {:dl:} {:fire:} {:star:} {:rocket:} {:gift:} {:music:} {:heart:} {:link:} {:lock:}\n` +
@@ -313,18 +384,21 @@ export async function buildPack(ownerId) {
  * account Telegram lets add to it, whoever is running this command.
  */
 export async function addPosterEmoji(imageBuffer) {
-  const settings = await paymentSettings();
-  const { emoji_set: name, emoji_owner: ownerId } = settings;
+  return addToPack(await toEmojiPng(imageBuffer), "🎬", ["poster"]);
+}
+
+/** Appends one 100x100 PNG to the bot's current pack and returns its custom_emoji_id. */
+async function addToPack(png, emoji, keywords) {
+  const { emoji_set: name, emoji_owner: ownerId } = await paymentSettings();
   if (!name || !ownerId) throw new Error("No emoji pack yet -- run /makeemoji first.");
 
-  const png = await toEmojiPng(imageBuffer);
   const form = new FormData();
   form.set("user_id", String(ownerId));
   form.set("name", name);
-  form.set("sticker", JSON.stringify({ sticker: "attach://s", format: "static", emoji_list: ["🎬"], keywords: ["poster"] }));
-  form.set("s", new Blob([png], { type: "image/png" }), "poster.png");
+  form.set("sticker", JSON.stringify({ sticker: "attach://s", format: "static", emoji_list: [emoji], keywords }));
+  form.set("s", new Blob([png], { type: "image/png" }), "icon.png");
   const added = await botApiForm("addStickerToSet", form);
-  if (!added.ok) throw new Error(added.description ?? "Telegram refused the poster.");
+  if (!added.ok) throw new Error(added.description ?? "Telegram refused the picture.");
 
   const set = await botApi("getStickerSet", { name });
   const list = set?.result?.stickers ?? [];
@@ -333,13 +407,67 @@ export async function addPosterEmoji(imageBuffer) {
   return id;
 }
 
-/** Crops/scales an arbitrary image down to the 100x100 PNG a sticker needs. */
-async function toEmojiPng(buffer) {
+/** Takes a replaced admin picture back out of its pack, so swapping an icon a few times doesn't fill the set's 200 slots. Best effort: a leftover only costs a slot. */
+async function dropSticker(customEmojiId) {
+  const found = await botApi("getCustomEmojiStickers", { custom_emoji_ids: [customEmojiId] }).catch(() => null);
+  const fileId = found?.result?.[0]?.file_id;
+  if (fileId) await botApi("deleteStickerFromSet", { sticker: fileId }).catch(() => null);
+}
+
+/**
+ * Swaps one icon's picture for the admin's own, straight from Telegram -- no
+ * asset file, deploy or /makeemoji. Kept apart from the pack's ids
+ * (emoji_custom, merged on top in emojiIds) because /makeemoji rewrites
+ * `emoji` wholesale and would otherwise quietly undo it; the sticker itself
+ * stays valid through a rebuild since earlier packs are never deleted.
+ */
+export async function setCustomEmoji(token, imageBuffer) {
+  const entry = EMOJI[token];
+  if (!entry) throw new Error(`No icon called "${token}".`);
+  const id = await addToPack(await toEmojiPng(imageBuffer, { whole: true }), entry[1], [token, "custom"]);
+  const custom = { ...((await paymentSettings()).emoji_custom ?? {}) };
+  const previous = custom[token];
+  custom[token] = id;
+  await savePaymentSettings({ emoji_custom: custom });
+  refusedAt = 0;
+  if (previous) await dropSticker(previous);
+  return id;
+}
+
+/** Puts an icon back to the pack's own picture. False when it had no admin picture. */
+export async function resetCustomEmoji(token) {
+  const custom = { ...((await paymentSettings()).emoji_custom ?? {}) };
+  const previous = custom[token];
+  if (!previous) return false;
+  delete custom[token];
+  await savePaymentSettings({ emoji_custom: custom });
+  await dropSticker(previous);
+  return true;
+}
+
+/** Which icons currently carry an admin picture. */
+export async function customEmojiTokens() {
+  return Object.keys((await paymentSettings()).emoji_custom ?? {});
+}
+
+/**
+ * Scales an arbitrary image to the 100x100 PNG a sticker needs: centre-cropped
+ * to fill (a poster), or with `whole`, fitted inside on transparent padding so
+ * a tall or wide icon keeps every part of itself.
+ */
+async function toEmojiPng(buffer, { whole = false } = {}) {
   const { createCanvas, loadImage } = await import("@napi-rs/canvas");
   const img = await loadImage(buffer);
-  const side = Math.min(img.width, img.height);
   const c = createCanvas(100, 100);
   const g = c.getContext("2d");
-  g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 100, 100);
+  if (whole) {
+    const scale = Math.min(100 / img.width, 100 / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    g.drawImage(img, (100 - w) / 2, (100 - h) / 2, w, h);
+  } else {
+    const side = Math.min(img.width, img.height);
+    g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 100, 100);
+  }
   return c.toBuffer("image/png");
 }
