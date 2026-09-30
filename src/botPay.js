@@ -121,7 +121,7 @@ async function sendPhotoBuffer(chatId, buffer, caption, replyMarkup) {
 }
 
 /** Downloads a photo the bot was sent, as raw bytes. */
-async function fetchTelegramFile(fileId) {
+export async function fetchTelegramFile(fileId) {
   const info = await call("getFile", { file_id: fileId });
   const filePath = info?.result?.file_path;
   if (!filePath) throw new Error("Telegram did not return the file.");
@@ -409,7 +409,7 @@ export async function handlePhoto(message, user) {
   return true;
 }
 
-async function saveQrFromPhoto(chatId, fileId, slot) {
+export async function saveQrFromPhoto(chatId, fileId, slot) {
   try {
     const payload = decodeQr(await fetchTelegramFile(fileId));
     if (!payload) {
@@ -452,7 +452,8 @@ async function saveTemplate(chatId, payload, slot = "primary") {
   });
 }
 
-async function qrStatus(chatId) {
+/** Both payment QRs' state, for /qrstatus and the 🛡️ Admin section's QR screen. */
+export async function qrStatusText({ withCommands = true } = {}) {
   const [settings] = rows(await db().from("bot_settings").select("khqr_template").eq("id", 1).limit(1));
   const extra = await paymentSettings();
   const describe = (payload) => {
@@ -460,14 +461,16 @@ async function qrStatus(chatId) {
     const name = parseKhqr(payload)?.find((f) => f.tag === "59")?.value;
     return `✓ set (payee: ${name ?? "?"})`;
   };
-  await call("sendMessage", {
-    chat_id: chatId,
-    text:
-      `{:admin:} Payment QRs\n\n` +
-      `1️⃣ ${extra.primary_label}: ${describe(settings?.khqr_template)} (name kept as the bank wrote it)\n` +
-      `2️⃣ ${extra.alt_label}: ${describe(extra.alt_template)}${extra.alt_template && extra.rename_alt ? " (shows the service name)" : ""}\n\n` +
-      `/setqr — photo or text, bank 1\n/setqr2 — photo or text, bank 2\n/setqr2 off — remove bank 2`,
-  });
+  return (
+    `{:admin:} Payment QRs\n\n` +
+    `1️⃣ ${extra.primary_label}: ${describe(settings?.khqr_template)} (name kept as the bank wrote it)\n` +
+    `2️⃣ ${extra.alt_label}: ${describe(extra.alt_template)}${extra.alt_template && extra.rename_alt ? " (shows the service name)" : ""}` +
+    (withCommands ? `\n\n/setqr — photo or text, bank 1\n/setqr2 — photo or text, bank 2\n/setqr2 off — remove bank 2` : "")
+  );
+}
+
+async function qrStatus(chatId) {
+  await call("sendMessage", { chat_id: chatId, text: await qrStatusText() });
 }
 
 /** Operator text commands for payments. Returns true when handled. */

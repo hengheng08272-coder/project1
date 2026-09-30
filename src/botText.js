@@ -102,6 +102,9 @@ const MENU = [
     en: "📲 Open App",
     aliases: ["🚀 Open App", "🚀 Open App · បើកកម្មវិធី", "🖥 បើកកម្មវិធី", "🖥 Open app"],
   },
+  // Only on the operator's own keyboard (see mainKeyboard); linkBot ignores
+  // the label from anyone else.
+  { action: "admin", emoji: "admin", km: "🛡️ Admin", en: "🛡️ Admin" },
 ];
 
 const LABEL_TO_ACTION = new Map();
@@ -133,7 +136,7 @@ export function actionForLabel(text) {
  * web UI inside the chat instead of a browser -- and is left out entirely
  * when it isn't, rather than showing a button that does nothing.
  */
-export function mainKeyboard(language) {
+export function mainKeyboard(language, chatId = null) {
   const button = (action) => {
     const item = MENU.find((m) => m.action === action);
     // `style` tints a few key buttons. Not "primary": Telegram draws the
@@ -154,6 +157,7 @@ export function mainKeyboard(language) {
     [button("referral")],
   ];
   if (appUrl) rows.push([{ ...button("app"), web_app: { url: appUrl } }]);
+  if (config.telegramAdminChatId && String(chatId) === String(config.telegramAdminChatId)) rows.push([button("admin")]);
   return { keyboard: rows, resize_keyboard: true, is_persistent: true };
 }
 

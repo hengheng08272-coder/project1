@@ -415,7 +415,7 @@ export async function handleSectionButton(chatId, user, text) {
     await call("sendMessage", {
       chat_id: chatId,
       text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
-      reply_markup: mainKeyboard(user.language),
+      reply_markup: mainKeyboard(user.language, chatId),
     });
     return true;
   }
@@ -844,7 +844,7 @@ export async function handleCallback(cq, user) {
     await call("sendMessage", {
       chat_id: chatId,
       text: user.language === "en" ? "{:inv_back:} Main menu" : "{:inv_back:} ម៉ឺនុយដើម",
-      reply_markup: mainKeyboard(user.language),
+      reply_markup: mainKeyboard(user.language, chatId),
     });
   }
   return true;

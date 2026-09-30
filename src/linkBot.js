@@ -22,6 +22,7 @@ import * as aiReply from "./aiReply.js";
 import * as botDeliver from "./botDeliver.js";
 import * as botJobs from "./botJobs.js";
 import * as botPay from "./botPay.js";
+import * as adminPanel from "./adminPanel.js";
 import * as emojiMaker from "./emojiMaker.js";
 import * as imageGen from "./imageGen.js";
 import * as imageQa from "./imageQa.js";
@@ -195,9 +196,9 @@ async function showAiMenu(chatId, user) {
   return send(chatId, t.aiMenuTitle, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: t.aiImageBtn, callback_data: "ai:image" }],
-        [{ text: t.aiSummarizeBtn, callback_data: "ai:summarize" }],
-        [{ text: t.aiAdImageBtn, callback_data: "ai:adimage" }],
+        [{ text: t.aiImageBtn, emoji: "m_camera", callback_data: "ai:image" }],
+        [{ text: t.aiSummarizeBtn, emoji: "m_summary", callback_data: "ai:summarize" }],
+        [{ text: t.aiAdImageBtn, emoji: "m_ad", callback_data: "ai:adimage" }],
       ],
     },
   });
@@ -278,6 +279,11 @@ export async function handleMessage(message) {
   const user = await ensureUser(from, startPayload);
   const t = texts(user.language);
 
+  // The picture the 🛡️ Admin section asked for (an icon or a bank QR), or
+  // one captioned /setemoji <name>. First, so a waiting Emoji Maker can't
+  // turn the operator's icon into a sticker instead.
+  if ((message.photo || message.document) && (await adminPanel.handleMedia(message, user))) return;
+
   // A GIF / video / photo / link for the Emoji Maker (while it waits for
   // one, or captioned /emoji). Before the photo handling: a photo it waits
   // for is an emoji, not a payment screenshot.
@@ -333,22 +339,26 @@ export async function handleMessage(message) {
 
   if (/^\/start\b/.test(text) || text === "/help" || !text) {
     const name = from.first_name || from.username || "";
-    await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language) });
+    await send(chatId, t.welcome(name), { reply_markup: mainKeyboard(user.language, chatId) });
     return;
   }
 
+  if (await adminPanel.handleText(chatId, user, text)) return;
   if (await handleAdminCommand(chatId, text)) return;
   if (await botPay.handleAdminPayCommand(chatId, text)) return;
 
-  if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language))) return;
+  if (await khInvoice.handleSectionButton(chatId, user, text, mainKeyboard(user.language, chatId))) return;
 
   const watchButton = await watch.handleSectionButton(chatId, user, text);
   if (watchButton === "dlcredit") return botPay.showPackages(chatId, user, await quotaFor(user));
   if (watchButton) return;
   if (await watch.handleListButton(chatId, user, text)) return;
 
-  const action = actionForLabel(text) ?? commandAction(text);
+  let action = actionForLabel(text) ?? commandAction(text);
+  // Anyone else typing the Admin label is just sending text.
+  if (action === "admin" && !botPay.isAdminChat(chatId)) action = null;
   if (action) {
+    adminPanel.cancel(chatId);
     khInvoice.cancelPending(chatId);
     watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
@@ -394,6 +404,8 @@ export async function handleMessage(message) {
     }
     case "app":
       return send(chatId, config.webAppUrl ? t.openApp(config.webAppUrl) : t.openAppMissing);
+    case "admin":
+      return adminPanel.show(chatId, user);
     default:
       break;
   }
@@ -418,7 +430,7 @@ export async function handleMessage(message) {
     // or the call failed, so this is exactly t.notALink whenever the feature
     // isn't configured or doesn't have an answer.
     const aiAnswer = await aiReply.answerFaq(user.telegram_user_id, text, user.language).catch(() => null);
-    await send(chatId, aiAnswer ?? t.notALink, { reply_markup: mainKeyboard(user.language) });
+    await send(chatId, aiAnswer ?? t.notALink, { reply_markup: mainKeyboard(user.language, chatId) });
     return;
   }
 
@@ -698,6 +710,7 @@ function commandAction(text) {
     case "/invoice": return "invoice";
     case "/emoji": return "emoji";
     case "/translate": return "translate";
+    case "/admin": return "admin";
     default: return null;
   }
 }
@@ -705,6 +718,10 @@ function commandAction(text) {
 /** The language buttons under "🌐 ភាសា". Returns true when it handled the tap. */
 export async function handleCallback(cq) {
   const data = String(cq?.data ?? "");
+  // Any other button (🖼 Set poster, the AI photo question, ...) means the
+  // operator moved on, so the next photo is no longer the icon or QR the
+  // Admin section was waiting for.
+  if (!data.startsWith("adm:") && cq?.message?.chat?.id) adminPanel.cancel(cq.message.chat.id);
   if (data.startsWith("inv:") && cq.from?.id) {
     return khInvoice.handleCallback(cq, await ensureUser(cq.from, null));
   }
@@ -717,6 +734,12 @@ export async function handleCallback(cq) {
   }
   if (data.startsWith("watch:") && cq.from?.id) {
     return watch.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data.startsWith("adm:") && cq.from?.id) {
+    const chatId = cq.message?.chat?.id;
+    const runAdminCommand = async (command) =>
+      (await handleAdminCommand(chatId, command)) || botPay.handleAdminPayCommand(chatId, command);
+    return adminPanel.handleCallback(cq, await ensureUser(cq.from, null), runAdminCommand);
   }
   if (data.startsWith("tr:") && cq.from?.id) {
     return translate.handleCallback(cq, await ensureUser(cq.from, null));
@@ -763,7 +786,7 @@ export async function handleCallback(cq) {
     .eq("telegram_user_id", userId);
 
   await call("answerCallbackQuery", { callback_query_id: cq.id });
-  await send(chatId, texts(language).languageSet, { reply_markup: mainKeyboard(language) });
+  await send(chatId, texts(language).languageSet, { reply_markup: mainKeyboard(language, chatId) });
   return true;
 }
 

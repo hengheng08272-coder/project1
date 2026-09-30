@@ -123,7 +123,9 @@ const NONE = Object.freeze({});
 
 async function emojiIds() {
   if (refusedAt && Date.now() - refusedAt < RETRY_MS) return NONE;
-  return (await paymentSettings()).emoji ?? {};
+  const settings = await paymentSettings();
+  // The admin's own pictures (setCustomEmoji) sit on top of the pack's.
+  return { ...(settings.emoji ?? {}), ...(settings.emoji_custom ?? {}) };
 }
 
 /**
@@ -362,8 +364,10 @@ export async function buildPack(ownerId) {
   // poster-less pack name is cleaned up.
   const legacy = `saveit_icons_by_${username}`;
   if (legacy !== name) await botApi("deleteStickerSet", { name: legacy }).catch(() => null);
+  const custom = (await customEmojiTokens()).length;
   return (
     `{:ok:} Custom emoji pack ready: ${Object.keys(ids).length}/${tokens.length} icons.${note}\n` +
+    (custom ? `(${custom} icon(s) set from 🛡️ Admin keep their own picture.)\n` : "") +
     `https://t.me/addemoji/${name}\n\n` +
     `Test: {:logo:} {:brand:} {:admin:} · {:m_free:} {:m_pro:} {:m_buy:} {:m_account:} {:m_help:} · {:inv_in:} {:inv_out:} {:inv_create:}\n` +
     `{:diamond:} {:sparkle:} {:video:} {:ok:} {:fail:} {:wait:} {:dl:} {:fire:} {:star:} {:rocket:} {:gift:} {:music:} {:heart:} {:link:} {:lock:}\n` +
@@ -380,18 +384,21 @@ export async function buildPack(ownerId) {
  * account Telegram lets add to it, whoever is running this command.
  */
 export async function addPosterEmoji(imageBuffer) {
-  const settings = await paymentSettings();
-  const { emoji_set: name, emoji_owner: ownerId } = settings;
+  return addToPack(await toEmojiPng(imageBuffer), "🎬", ["poster"]);
+}
+
+/** Appends one 100x100 PNG to the bot's current pack and returns its custom_emoji_id. */
+async function addToPack(png, emoji, keywords) {
+  const { emoji_set: name, emoji_owner: ownerId } = await paymentSettings();
   if (!name || !ownerId) throw new Error("No emoji pack yet -- run /makeemoji first.");
 
-  const png = await toEmojiPng(imageBuffer);
   const form = new FormData();
   form.set("user_id", String(ownerId));
   form.set("name", name);
-  form.set("sticker", JSON.stringify({ sticker: "attach://s", format: "static", emoji_list: ["🎬"], keywords: ["poster"] }));
-  form.set("s", new Blob([png], { type: "image/png" }), "poster.png");
+  form.set("sticker", JSON.stringify({ sticker: "attach://s", format: "static", emoji_list: [emoji], keywords }));
+  form.set("s", new Blob([png], { type: "image/png" }), "icon.png");
   const added = await botApiForm("addStickerToSet", form);
-  if (!added.ok) throw new Error(added.description ?? "Telegram refused the poster.");
+  if (!added.ok) throw new Error(added.description ?? "Telegram refused the picture.");
 
   const set = await botApi("getStickerSet", { name });
   const list = set?.result?.stickers ?? [];
@@ -400,13 +407,67 @@ export async function addPosterEmoji(imageBuffer) {
   return id;
 }
 
-/** Crops/scales an arbitrary image down to the 100x100 PNG a sticker needs. */
-async function toEmojiPng(buffer) {
+/** Takes a replaced admin picture back out of its pack, so swapping an icon a few times doesn't fill the set's 200 slots. Best effort: a leftover only costs a slot. */
+async function dropSticker(customEmojiId) {
+  const found = await botApi("getCustomEmojiStickers", { custom_emoji_ids: [customEmojiId] }).catch(() => null);
+  const fileId = found?.result?.[0]?.file_id;
+  if (fileId) await botApi("deleteStickerFromSet", { sticker: fileId }).catch(() => null);
+}
+
+/**
+ * Swaps one icon's picture for the admin's own, straight from Telegram -- no
+ * asset file, deploy or /makeemoji. Kept apart from the pack's ids
+ * (emoji_custom, merged on top in emojiIds) because /makeemoji rewrites
+ * `emoji` wholesale and would otherwise quietly undo it; the sticker itself
+ * stays valid through a rebuild since earlier packs are never deleted.
+ */
+export async function setCustomEmoji(token, imageBuffer) {
+  const entry = EMOJI[token];
+  if (!entry) throw new Error(`No icon called "${token}".`);
+  const id = await addToPack(await toEmojiPng(imageBuffer, { whole: true }), entry[1], [token, "custom"]);
+  const custom = { ...((await paymentSettings()).emoji_custom ?? {}) };
+  const previous = custom[token];
+  custom[token] = id;
+  await savePaymentSettings({ emoji_custom: custom });
+  refusedAt = 0;
+  if (previous) await dropSticker(previous);
+  return id;
+}
+
+/** Puts an icon back to the pack's own picture. False when it had no admin picture. */
+export async function resetCustomEmoji(token) {
+  const custom = { ...((await paymentSettings()).emoji_custom ?? {}) };
+  const previous = custom[token];
+  if (!previous) return false;
+  delete custom[token];
+  await savePaymentSettings({ emoji_custom: custom });
+  await dropSticker(previous);
+  return true;
+}
+
+/** Which icons currently carry an admin picture. */
+export async function customEmojiTokens() {
+  return Object.keys((await paymentSettings()).emoji_custom ?? {});
+}
+
+/**
+ * Scales an arbitrary image to the 100x100 PNG a sticker needs: centre-cropped
+ * to fill (a poster), or with `whole`, fitted inside on transparent padding so
+ * a tall or wide icon keeps every part of itself.
+ */
+async function toEmojiPng(buffer, { whole = false } = {}) {
   const { createCanvas, loadImage } = await import("@napi-rs/canvas");
   const img = await loadImage(buffer);
-  const side = Math.min(img.width, img.height);
   const c = createCanvas(100, 100);
   const g = c.getContext("2d");
-  g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 100, 100);
+  if (whole) {
+    const scale = Math.min(100 / img.width, 100 / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    g.drawImage(img, (100 - w) / 2, (100 - h) / 2, w, h);
+  } else {
+    const side = Math.min(img.width, img.height);
+    g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 100, 100);
+  }
   return c.toBuffer("image/png");
 }
