@@ -48,6 +48,7 @@ export const EMOJI = {
   m_language: ["m_language", "🌐"],
   m_help: ["m_help", "❓"],
   m_desktop: ["m_desktop", "🖥️"],
+  m_emoji: ["m_emoji", "✨"],
   m_camera: ["m_camera", "📷"],
   m_summary: ["m_summary", "📝"],
   m_ad: ["m_ad", "🎨"],

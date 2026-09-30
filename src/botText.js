@@ -60,7 +60,9 @@ const MENU = [
     // it made the main-menu button wrap to two lines on a phone.
     aliases: ["🎬 មើលរឿង", "🎬 រឿងនិយាយខ្មែរ (សម្រាប់លក់)", "🎬 Khmer-dubbed Shows (for sale)", "🎬 Watch"],
   },
-  { action: "emoji", emoji: "sparkle", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
+  // Its own icon rather than the shared "sparkle", which SaveIt AI below and
+  // plenty of reply text use too.
+  { action: "emoji", emoji: "m_emoji", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
     action: "translate",
     emoji: "m_language",
