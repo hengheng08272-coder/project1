@@ -318,6 +318,11 @@ export async function handleMessage(message) {
     }
   }
 
+  // A photo the 📷 "Ask about a photo" button just asked for. Ahead of the
+  // payment handler below, which answers every other photo ("no pending
+  // order") and so would otherwise swallow it.
+  if (message.photo && imageQa.isWaiting(chatId) && (await imageQa.handleMessage(message, user))) return;
+
   // A photo is a payment screenshot, or -- from the operator, captioned
   // /setqr -- the bank QR orders are built from. Checked before the text
   // handling below, since a photo usually has no text at all.

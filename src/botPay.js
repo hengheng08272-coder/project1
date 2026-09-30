@@ -381,6 +381,10 @@ export async function handlePhoto(message, user) {
       .limit(1)
   );
   if (!order) {
+    // A caption with no order to pay is a question about the picture --
+    // left for Image Q&A (linkBot checks it next) rather than answered with
+    // "no pending order".
+    if (caption) return false;
     await call("sendMessage", { chat_id: chatId, text: s.noPendingOrder });
     return true;
   }

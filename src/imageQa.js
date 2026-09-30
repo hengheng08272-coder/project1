@@ -47,7 +47,7 @@ export function cancel(chatId) {
   waiting.delete(chatId);
 }
 
-function isWaiting(chatId) {
+export function isWaiting(chatId) {
   const w = waiting.get(chatId);
   if (!w) return false;
   if (Date.now() - w.at > WAIT_MS) {
