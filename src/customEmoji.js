@@ -262,7 +262,7 @@ async function inputSticker(form, field, token, still) {
   return { sticker: `attach://${field}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] };
 }
 
-/** The request that creates `name` from the first icons. */
+/** The request that creates `name` from the first icons. A token with no real asset file yet (added to EMOJI but never given a PNG/WEBM) is skipped rather than failing the whole pack -- it just keeps using its plain fallback emoji. */
 async function packForm(ownerId, name, tokens, still) {
   const form = new FormData();
   form.set("user_id", String(ownerId));
@@ -270,23 +270,34 @@ async function packForm(ownerId, name, tokens, still) {
   form.set("title", "SaveIt KH Icons");
   form.set("sticker_type", "custom_emoji");
   const stickers = [];
-  for (const [i, token] of tokens.slice(0, FIRST_BATCH).entries()) stickers.push(await inputSticker(form, `s${i}`, token, still));
+  for (const token of tokens.slice(0, FIRST_BATCH)) {
+    try {
+      stickers.push(await inputSticker(form, `s${stickers.length}`, token, still));
+    } catch (err) {
+      console.error(`buildPack: skipping "${token}" -- ${err?.message ?? err}`);
+    }
+  }
   form.set("stickers", JSON.stringify(stickers));
   return form;
 }
 
-/** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. */
+/** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. Same skip-don't-fail handling for a token with no asset file yet. */
 async function addRest(ownerId, name, tokens, still) {
   const added = [];
   for (const token of tokens.slice(FIRST_BATCH)) {
     for (const asStill of still ? [true] : [false, true]) {
-      const form = new FormData();
-      form.set("user_id", String(ownerId));
-      form.set("name", name);
-      form.set("sticker", JSON.stringify(await inputSticker(form, "s", token, asStill)));
-      if ((await botApiForm("addStickerToSet", form)).ok) {
-        added.push(token);
-        break;
+      try {
+        const form = new FormData();
+        form.set("user_id", String(ownerId));
+        form.set("name", name);
+        form.set("sticker", JSON.stringify(await inputSticker(form, "s", token, asStill)));
+        if ((await botApiForm("addStickerToSet", form)).ok) {
+          added.push(token);
+          break;
+        }
+      } catch (err) {
+        console.error(`buildPack: skipping "${token}" -- ${err?.message ?? err}`);
+        break; // no asset file at all -- retrying as still won't help
       }
     }
   }

@@ -189,6 +189,20 @@ async function quotaFor(user) {
 
 // ------------------------------------------------------------ menu screens
 
+/** The "🤖 SaveIt AI" door: one screen listing Image Q&A / Video Summary / Ad Image, each an inline button routed through handleCallback's "ai:" prefix. */
+async function showAiMenu(chatId, user) {
+  const t = texts(user.language);
+  return send(chatId, t.aiMenuTitle, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t.aiImageBtn, callback_data: "ai:image" }],
+        [{ text: t.aiSummarizeBtn, callback_data: "ai:summarize" }],
+        [{ text: t.aiAdImageBtn, callback_data: "ai:adimage" }],
+      ],
+    },
+  });
+}
+
 async function showAccount(chatId, user) {
   const t = texts(user.language);
   const quota = await quotaFor(user);
@@ -339,9 +353,12 @@ export async function handleMessage(message) {
     watch.cancelPending(chatId);
     if (action !== "emoji") emojiMaker.cancel(chatId);
     if (action !== "translate") translate.cancel(chatId);
-    if (action !== "image") imageQa.cancel(chatId);
-    if (action !== "summarize") videoSummary.cancel(chatId);
-    if (action !== "adimage") imageGen.cancel(chatId);
+    // None of these three are label actions themselves anymore -- they only
+    // start from the "ai" sub-menu's inline buttons (see handleCallback) --
+    // so any label tap here always means leaving them behind.
+    imageQa.cancel(chatId);
+    videoSummary.cancel(chatId);
+    imageGen.cancel(chatId);
     // A new section replaces the last one: its screens and the tapped
     // button's own message go, so only what was just asked for is shown.
     await clearScreens(chatId, message.message_id);
@@ -351,12 +368,8 @@ export async function handleMessage(message) {
       return emojiMaker.ask(chatId, user);
     case "translate":
       return translate.ask(chatId, user);
-    case "image":
-      return imageQa.ask(chatId, user);
-    case "summarize":
-      return videoSummary.ask(chatId, user);
-    case "adimage":
-      return imageGen.ask(chatId, user);
+    case "ai":
+      return showAiMenu(chatId, user);
     case "invoice":
       return khInvoice.enterSection(chatId, user);
     case "watch":
@@ -707,6 +720,19 @@ export async function handleCallback(cq) {
   }
   if (data.startsWith("tr:") && cq.from?.id) {
     return translate.handleCallback(cq, await ensureUser(cq.from, null));
+  }
+  if (data.startsWith("ai:") && cq.from?.id) {
+    // The "🤖 SaveIt AI" sub-menu's buttons (see showAiMenu): each just
+    // starts the same ask() the removed standalone menu buttons used to.
+    const chatId = cq.message?.chat?.id;
+    if (!chatId) return false;
+    const user = await ensureUser(cq.from, null);
+    await call("answerCallbackQuery", { callback_query_id: cq.id });
+    const which = data.split(":")[1];
+    if (which === "image") return imageQa.ask(chatId, user);
+    if (which === "summarize") return videoSummary.ask(chatId, user);
+    if (which === "adimage") return imageGen.ask(chatId, user);
+    return true;
   }
   if (!data.startsWith("bot:")) return false;
 

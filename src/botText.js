@@ -69,25 +69,12 @@ const MENU = [
     en: "🌐 Translate",
     aliases: ["🌐 Translate · ខ្មែរ ⇄ English"],
   },
-  // Only shown (see mainKeyboard) when NVIDIA_API_KEY is set -- see aiReply.js.
-  {
-    action: "image",
-    emoji: "m_camera",
-    km: "📷 សួរអំពីរូបភាព",
-    en: "📷 Ask about a Photo",
-  },
-  {
-    action: "summarize",
-    emoji: "m_summary",
-    km: "📝 សង្ខេបវីដេអូ (AI)",
-    en: "📝 Summarize a Video (AI)",
-  },
-  {
-    action: "adimage",
-    emoji: "m_ad",
-    km: "🎨 បង្កើតរូបភាព Ads (AI)",
-    en: "🎨 Generate an Ad Image (AI)",
-  },
+  // Only shown (see mainKeyboard) when NVIDIA_API_KEY is set -- opens the
+  // AI sub-menu (see showAiMenu in linkBot.js) instead of being its own
+  // action, so Image Q&A / Video Summary / Ad Image live under one door
+  // the same way KH Invoice and Emoji Maker do, instead of three separate
+  // buttons crowding the main keyboard.
+  { action: "ai", emoji: "sparkle", style: "primary", km: "🤖 SaveIt AI", en: "🤖 SaveIt AI" },
   {
     action: "buy",
     emoji: "credit",
@@ -158,7 +145,7 @@ export function mainKeyboard(language) {
     [button("free"), button("premium")],
     config.khInvoiceBridgeSecret ? [button("invoice"), button("emoji")] : [button("emoji")],
     [button("translate"), button("watch")],
-    ...(config.nvidiaApiKey ? [[button("image"), button("summarize")], [button("adimage")]] : []),
+    ...(config.nvidiaApiKey ? [[button("ai")]] : []),
     [button("account")],
     [button("buy")],
     [button("referral")],
@@ -220,6 +207,12 @@ const TEXT = {
     btnHelp: "❓ ជំនួយ",
     openApp: (url) => `{:m_desktop:} បើកកម្មវិធីពេញលេញ៖\n${url}`,
     openAppMissing: "{:m_desktop:} កម្មវិធីលើបណ្ដាញមិនទាន់បានកំណត់ទេ។",
+    aiMenuTitle:
+      "{:sparkle:} SaveIt AI\n\nជ្រើសរើសមុខងារ AI ដែលចង់ប្រើ៖\n\n" +
+      "{:bulb:} ក៏អាចគ្រាន់តែសរសេរសំណួរធម្មតាមកខ្ញុំផ្ទាល់ផងដែរ (AI FAQ) — ចម្លើយអំពី bot នេះ។",
+    aiImageBtn: "📷 សួរអំពីរូបភាព",
+    aiSummarizeBtn: "📝 សង្ខេបវីដេអូ",
+    aiAdImageBtn: "🎨 បង្កើតរូបភាព Ads",
     sendLink: "{:dl:} ផ្ញើតំណវីដេអូមកទីនេះ (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…)។",
     freeScreen: () =>
       `{:m_free:} {b}SaveIt Free{/b} — ឥតគិតថ្លៃ មិនកំណត់\n\n` +
@@ -325,6 +318,12 @@ const TEXT = {
     btnHelp: "❓ Help",
     openApp: (url) => `{:m_desktop:} Open the full app:\n${url}`,
     openAppMissing: "{:m_desktop:} The web app URL isn't configured yet.",
+    aiMenuTitle:
+      "{:sparkle:} SaveIt AI\n\nPick the AI feature you want:\n\n" +
+      "{:bulb:} You can also just send me an ordinary question directly (AI FAQ) -- answers about this bot.",
+    aiImageBtn: "📷 Ask about a Photo",
+    aiSummarizeBtn: "📝 Summarize a Video",
+    aiAdImageBtn: "🎨 Generate an Ad Image",
     sendLink: "{:dl:} Send a video link here (YouTube, Facebook, TikTok, Telegram, .mp4, .m3u8…).",
     freeScreen: () =>
       `{:m_free:} {b}SaveIt Free{/b} — free & unlimited\n\n` +
