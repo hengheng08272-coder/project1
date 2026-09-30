@@ -705,6 +705,9 @@ export async function handleCallback(cq) {
   if (data.startsWith("watch:") && cq.from?.id) {
     return watch.handleCallback(cq, await ensureUser(cq.from, null));
   }
+  if (data.startsWith("tr:") && cq.from?.id) {
+    return translate.handleCallback(cq, await ensureUser(cq.from, null));
+  }
   if (!data.startsWith("bot:")) return false;
 
   const [, kind, value] = data.split(":");
