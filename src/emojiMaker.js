@@ -219,11 +219,12 @@ async function toWebm(source, dir, start) {
 }
 
 // Oversized on purpose: a square's inscribed circle (radius = half its own
-// side) doesn't shrink as it rotates, so scaling the source up to 160 means
-// an 80px radius around the center is covered at ANY rotation angle -- comfortably
-// past the 100x100 crop's own farthest corner (a 70.7px radius) even with the
-// vertical bob's few extra pixels of reach. That keeps every frame full of
-// real photo content, with no background corner ever exposed to fill in.
+// side) is the same at every rotation angle, so scaling the source up to 160
+// means an 80px radius around the center is covered no matter how far it has
+// spun -- comfortably past the 100x100 crop's own farthest corner (a 70.7px
+// radius). That keeps every frame full of real photo content, with no
+// background corner ever exposed to fill in, through a full 360-degree turn
+// just as much as the small wobble this replaced.
 //
 // The fill-color route (rotate a plain crop with a transparent corner) was
 // tried first and confirmed NOT to work on this box: a half-transparent test
@@ -232,24 +233,24 @@ async function toWebm(source, dir, start) {
 // all, rather than depending on a codec feature that didn't hold up here.
 const SPIN_CANVAS = 160;
 const SPIN_CROP_OFFSET = (SPIN_CANVAS - 100) / 2;
-// One shared period for the spin and the bob (90 degrees out of phase, for a
-// wobble rather than a plain back-and-forth), over exactly two full periods
-// of the clip's 2.9s runtime -- so the loop's end matches its own start with
-// no visible jump when Telegram repeats it.
+const SPIN_DURATION = 2.9; // Telegram's own cap for a video emoji
+const SPIN_TURNS = 4; // a full turn about every 0.7s -- fast, not a wobble
+// A whole number of turns across the exact clip duration, so the last frame's
+// angle matches the first's and the loop shows no jump when Telegram repeats it.
 const SPIN_FILTER =
   `scale=${SPIN_CANVAS}:${SPIN_CANVAS}:force_original_aspect_ratio=increase:flags=lanczos,` +
   `crop=${SPIN_CANVAS}:${SPIN_CANVAS},` +
-  `rotate=a='0.22*sin(2*PI*t/1.45)':ow=${SPIN_CANVAS}:oh=${SPIN_CANVAS},` +
-  `crop=100:100:${SPIN_CROP_OFFSET}:'${SPIN_CROP_OFFSET}+6*cos(2*PI*t/1.45)'`;
+  `rotate=a='2*PI*t*${SPIN_TURNS}/${SPIN_DURATION}':ow=${SPIN_CANVAS}:oh=${SPIN_CANVAS},` +
+  `crop=100:100:${SPIN_CROP_OFFSET}:${SPIN_CROP_OFFSET}`;
 
-/** A looping 2.9s clip of a still photo spinning and bobbing gently in place, shrunk until it is under Telegram's 256 KB video-emoji cap. */
+/** A looping ~2.9s clip of a still photo spinning fast in place, shrunk until it is under Telegram's 256 KB video-emoji cap. */
 async function toSpinningWebm(source, dir) {
   const out = path.join(dir, "emoji.webm");
   for (const [crf, fps] of [[32, 24], [40, 24], [48, 20], [56, 15]]) {
     try {
       await run(
         FFMPEG,
-        ["-y", "-loglevel", "error", "-loop", "1", "-t", "2.9", "-i", source, "-t", "2.9",
+        ["-y", "-loglevel", "error", "-loop", "1", "-t", String(SPIN_DURATION), "-i", source, "-t", String(SPIN_DURATION),
           "-vf", SPIN_FILTER, "-r", String(fps),
           "-c:v", "libvpx-vp9", "-pix_fmt", "yuv420p", "-b:v", "0", "-crf", String(crf),
           "-an", "-map_metadata", "-1", out],
