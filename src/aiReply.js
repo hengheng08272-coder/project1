@@ -116,41 +116,61 @@ const SUMMARY_SYSTEM_PROMPT = {
     "Summarize the key points briefly in English, as a short list. If the text is unclear or too short to summarize, say so plainly instead of guessing.",
 };
 
-/** POSTs one chat-completions call and returns the trimmed, length-capped reply, or null on any failure. Never throws. */
+// A shared/free-tier key's own "too many requests against this pool right
+// now" signal (seen in production as HTTP 503 "ResourceExhausted: Worker
+// local total request limit reached") -- other callers on the same pool
+// finish in a second or two, so one short retry clears a lot of these
+// without the person asking ever seeing a failure over what was just bad
+// timing.
+const RATE_LIMIT_RETRY_DELAY_MS = 1_500;
+const RATE_LIMIT_MAX_ATTEMPTS = 2;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** POSTs one chat-completions call and returns the trimmed, length-capped reply, or null on any failure. Retries once on a 503 (see RATE_LIMIT_MAX_ATTEMPTS above). Never throws. */
 async function callChat(messages) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${config.nvidiaApiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        model: config.nvidiaApiModel,
-        stream: false,
-        temperature: 0.4,
-        max_tokens: 400,
-        messages,
-      }),
-    });
-    if (!res.ok) {
-      console.error(`AI reply failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+  for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${config.nvidiaApiKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: config.nvidiaApiModel,
+          stream: false,
+          temperature: 0.4,
+          max_tokens: 400,
+          messages,
+        }),
+      });
+      if (res.status === 503 && attempt < RATE_LIMIT_MAX_ATTEMPTS) {
+        await sleep(RATE_LIMIT_RETRY_DELAY_MS);
+        continue;
+      }
+      if (!res.ok) {
+        console.error(`AI reply failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+        return null;
+      }
+      const data = await res.json();
+      const reply = String(data?.choices?.[0]?.message?.content ?? "").trim();
+      if (!reply) return null;
+      return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}…` : reply;
+    } catch (err) {
+      console.error("AI reply failed:", err?.message ?? err);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
-    const data = await res.json();
-    const reply = String(data?.choices?.[0]?.message?.content ?? "").trim();
-    if (!reply) return null;
-    return reply.length > MAX_REPLY_CHARS ? `${reply.slice(0, MAX_REPLY_CHARS)}…` : reply;
-  } catch (err) {
-    console.error("AI reply failed:", err?.message ?? err);
-    return null;
-  } finally {
-    clearTimeout(timeout);
   }
+  return null;
 }
 
 /**
@@ -249,40 +269,47 @@ async function expandAdPrompt(description, language) {
   ]);
 }
 
-/** POSTs one image-generation call and returns the raw base64 image, or null on any failure. Never throws. */
+/** POSTs one image-generation call and returns the raw base64 image, or null on any failure. Retries once on a 503 (same shared-pool signal callChat retries -- see RATE_LIMIT_MAX_ATTEMPTS). Never throws. */
 async function requestGeneratedImage(prompt) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), IMAGE_GEN_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${IMAGE_GEN_ENDPOINT_BASE}/${config.nvidiaImageModel}`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${config.nvidiaApiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      // flux.1-schnell is the fast, distilled FLUX variant -- a handful of
-      // steps is its own intended range, not a shortcut taken here; the
-      // higher-quality flux.1-dev instead wants ~50 and would need a
-      // different NVIDIA_IMAGE_MODEL, not just a bigger `steps`.
-      body: JSON.stringify({ prompt, mode: "base", seed: 0, steps: 4 }),
-    });
-    if (!res.ok) {
-      console.error(`AI image generation failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+  for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), IMAGE_GEN_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${IMAGE_GEN_ENDPOINT_BASE}/${config.nvidiaImageModel}`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${config.nvidiaApiKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        // flux.1-schnell is the fast, distilled FLUX variant -- a handful of
+        // steps is its own intended range, not a shortcut taken here; the
+        // higher-quality flux.1-dev instead wants ~50 and would need a
+        // different NVIDIA_IMAGE_MODEL, not just a bigger `steps`.
+        body: JSON.stringify({ prompt, mode: "base", seed: 0, steps: 4 }),
+      });
+      if (res.status === 503 && attempt < RATE_LIMIT_MAX_ATTEMPTS) {
+        await sleep(RATE_LIMIT_RETRY_DELAY_MS);
+        continue;
+      }
+      if (!res.ok) {
+        console.error(`AI image generation failed: HTTP ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
+        return null;
+      }
+      const data = await res.json();
+      // Exact response shape isn't the same across every NVIDIA Visual GenAI
+      // model -- these are the shapes seen across FLUX/Stable-Diffusion NIMs.
+      const base64 = data?.artifacts?.[0]?.base64 ?? data?.image ?? data?.data?.[0]?.b64_json ?? null;
+      return base64 || null;
+    } catch (err) {
+      console.error("AI image generation failed:", err?.message ?? err);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
-    const data = await res.json();
-    // Exact response shape isn't the same across every NVIDIA Visual GenAI
-    // model -- these are the shapes seen across FLUX/Stable-Diffusion NIMs.
-    const base64 = data?.artifacts?.[0]?.base64 ?? data?.image ?? data?.data?.[0]?.b64_json ?? null;
-    return base64 || null;
-  } catch (err) {
-    console.error("AI image generation failed:", err?.message ?? err);
-    return null;
-  } finally {
-    clearTimeout(timeout);
   }
+  return null;
 }
 
 /**
