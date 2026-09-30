@@ -34,7 +34,6 @@ const MENU = [
   {
     action: "premium",
     emoji: "dl",
-    style: "primary",
     km: "📥 Telegram Private Link",
     en: "📥 Telegram Private Link",
     aliases: [
@@ -62,7 +61,7 @@ const MENU = [
   },
   // Its own icon rather than the shared "sparkle", which SaveIt AI below and
   // plenty of reply text use too.
-  { action: "emoji", emoji: "m_emoji", style: "primary", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
+  { action: "emoji", emoji: "m_emoji", km: "✨ Emoji Maker", en: "✨ Emoji Maker", aliases: ["✨ Emoji Maker · បង្កើត Emoji"] },
   {
     action: "translate",
     emoji: "m_language",
@@ -76,7 +75,7 @@ const MENU = [
   // action, so Image Q&A / Video Summary / Ad Image live under one door
   // the same way KH Invoice and Emoji Maker do, instead of three separate
   // buttons crowding the main keyboard.
-  { action: "ai", emoji: "sparkle", style: "primary", km: "🤖 SaveIt AI", en: "🤖 SaveIt AI" },
+  { action: "ai", emoji: "sparkle", km: "🤖 SaveIt AI", en: "🤖 SaveIt AI" },
   {
     action: "buy",
     emoji: "credit",
@@ -137,7 +136,9 @@ export function actionForLabel(text) {
 export function mainKeyboard(language) {
   const button = (action) => {
     const item = MENU.find((m) => m.action === action);
-    // `style` tints a few key buttons (Telegram's primary / success colours).
+    // `style` tints a few key buttons. Not "primary": Telegram draws the
+    // label in its accent blue, which on that style's own blue background is
+    // invisible -- those buttons came out looking like a bare icon.
     return { text: item[language] ?? item.en, emoji: item.emoji, ...(item.style ? { style: item.style } : {}) };
   };
   const appUrl = config.webAppUrl || (config.khInvoiceBridgeSecret && config.publicUrl ? `${config.publicUrl.replace(/\/$/, "")}/invoice/` : "");

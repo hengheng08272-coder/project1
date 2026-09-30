@@ -263,7 +263,15 @@ async function inputSticker(form, field, token, still) {
   return { sticker: `attach://${field}`, format: video ? "video" : "static", emoji_list: [fallback], keywords: [token, file] };
 }
 
-/** The request that creates `name` from the first icons. A token with no real asset file yet (added to EMOJI but never given a PNG/WEBM) is skipped rather than failing the whole pack -- it just keeps using its plain fallback emoji. */
+/**
+ * The request that creates `name` from the first icons, and the tokens it
+ * actually carries. A token with no real asset file yet (added to EMOJI but
+ * never given a PNG/WEBM) is skipped rather than failing the whole pack -- it
+ * just keeps using its plain fallback emoji. `included` has to be reported
+ * back because the ids are matched to tokens by position later: assuming every
+ * token made it silently shifted every icon after a skipped one onto its
+ * neighbour's picture.
+ */
 async function packForm(ownerId, name, tokens, still) {
   const form = new FormData();
   form.set("user_id", String(ownerId));
@@ -271,15 +279,17 @@ async function packForm(ownerId, name, tokens, still) {
   form.set("title", "SaveIt KH Icons");
   form.set("sticker_type", "custom_emoji");
   const stickers = [];
+  const included = [];
   for (const token of tokens.slice(0, FIRST_BATCH)) {
     try {
       stickers.push(await inputSticker(form, `s${stickers.length}`, token, still));
+      included.push(token);
     } catch (err) {
       console.error(`buildPack: skipping "${token}" -- ${err?.message ?? err}`);
     }
   }
   form.set("stickers", JSON.stringify(stickers));
-  return form;
+  return { form, included };
 }
 
 /** Adds the icons past the first batch (a moving one refused goes in still); returns the ones added. Same skip-don't-fail handling for a token with no asset file yet. */
@@ -320,17 +330,19 @@ export async function buildPack(ownerId) {
   const tokens = Object.keys(EMOJI);
   const name = `saveit_v${Date.now().toString(36)}_by_${username}`;
 
-  let created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, false));
+  let batch = await packForm(ownerId, name, tokens, false);
+  let created = await botApiForm("createNewStickerSet", batch.form);
   let note = "";
   if (!created.ok) {
     // The moving ones are the likelier to be refused; the stills always fit.
     const why = created.description ?? "unknown error";
-    created = await botApiForm("createNewStickerSet", await packForm(ownerId, name, tokens, true));
+    batch = await packForm(ownerId, name, tokens, true);
+    created = await botApiForm("createNewStickerSet", batch.form);
     if (!created.ok) return `❌ Telegram refused the pack: ${created.description ?? why}`;
     note = `\n(Moving icons were refused -- "${why}" -- so this pack is still images.)`;
   }
 
-  const added = [...tokens.slice(0, FIRST_BATCH), ...(await addRest(ownerId, name, tokens, !!note))];
+  const added = [...batch.included, ...(await addRest(ownerId, name, tokens, !!note))];
 
   // The set lists its stickers in the order they went in.
   const set = await botApi("getStickerSet", { name });
